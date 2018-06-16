@@ -34,6 +34,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="DevLib.ExtensionMethods, Version=2.17.8.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\DevLib.ExtensionMethods.2.17.8.0\lib\net35\DevLib.ExtensionMethods.dll</HintPath>
+    </Reference>
     <Reference Include="DevLib.ModernUI, Version=2.17.8.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\DevLib.ModernUI.2.17.8.0\lib\net20\DevLib.ModernUI.dll</HintPath>
     </Reference>

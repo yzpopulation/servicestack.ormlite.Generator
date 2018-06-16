@@ -11,19 +11,21 @@ namespace 实体类生成器
 {
     public class GeneratorTables
     {
+        Dictionary<string,string> dic=new Dictionary<string, string>();
         string ConnectionStringName = ""; // Uses last connection string in config if not specified
         string Namespace = "";
         string ClassPrefix = "";
         string ClassSuffix = "";
         bool SplitIntoMultipleFiles = false; // if true: Generates one file for every class
+        string MultipleFileName = "MultipleFileName.cs";
         bool MakeSingular = true; // if true: Changes the classname to singular if tablename is not singular
-        bool UseIdAsPK = true; // if true: Changes the primary key property name to Id
+        bool UseIdAsPK = false; // if true: Changes the primary key property name to Id
         bool GenerateConstructor = false; // if true: Generates the default empty constructor
         bool UseSchemaAttribute = true; // if true: Adds explicit '[Schema]' attribute
 
         bool
             CreateAutoQueryTypes =
-                true; //if true: Will create <TypeName>Query types with all possible search fields explicitly typed
+                false; //if true: Will create <TypeName>Query types with all possible search fields explicitly typed
 
         bool
             AddNamedConnection =
@@ -52,38 +54,42 @@ using ServiceStack;
 
 namespace {Namespace}
 {{";
+            string Footerstring = "}";
+
             foreach (SchemaReaderClass.Table tbl in from t in tables where !t.Ignore select t)
             {
-                StreamWriter sw = new StreamWriter(tbl.Name + ".cs");
-                sw.WriteLine(Headerstring);
+                StringBuilder sb=new StringBuilder();
+                //                StreamWriter sw = new StreamWriter(tbl.Name + ".cs");
+                //                sb.AppendLine(Headerstring);
+                sb.AppendLine();
                 if (CreateAutoQueryTypes && AddNamedConnection)
                 {
-                    sw.WriteLine(
+                    sb.AppendLine(
                         $"    [NamedConnection(\" {(!string.IsNullOrEmpty(UseSpecificNamedConnection) ? UseSpecificNamedConnection : ConnectionStringName)}\")]");
                 }
 
                 if (MakeSingular)
                 {
-                    sw.WriteLine($"    [Alias(\"{tbl.Name}\")]");
+                    sb.AppendLine($"    [Alias(\"{tbl.Name}\")]");
                 }
 
                 if (UseSchemaAttribute && !string.IsNullOrEmpty(tbl.Schema) && tbl.Schema != "dbo")
                 {
-                    sw.WriteLine($"    [Schema(\"{tbl.Schema}\")]");
+                    sb.AppendLine($"    [Schema(\"{tbl.Schema}\")]");
                 }
 
-                sw.Write($"    public partial class {tbl.ClassName}");
+                sb.Append($"    public partial class {tbl.ClassName}");
                 if (tbl.HasPK() && UseIdAsPK)
                 {
-                    sw.Write($" : IHasId<{tbl.PK.PropertyType}>");
+                    sb.Append($" : IHasId<{tbl.PK.PropertyType}>");
                 }
-                sw.WriteLine("");
-                sw.WriteLine("    {");
+                sb.AppendLine("");
+                sb.AppendLine("    {");
                 if (GenerateConstructor)
                 {
-                    sw.WriteLine($"    public {tbl.ClassName}()");
-                    sw.WriteLine("    {");
-                    sw.WriteLine("    }");
+                    sb.AppendLine($"    public {tbl.ClassName}()");
+                    sb.AppendLine("    {");
+                    sb.AppendLine("    }");
                 }
 
                 var priorProperyNames = new List<string>();
@@ -97,40 +103,40 @@ namespace {Namespace}
                     priorProperyNames.Add(col.PropertyName);
                     if ((col.Name != col.PropertyName) || (col.IsPK && UseIdAsPK))
                     {
-                        sw.WriteLine($"        [Alias(\"{col.Name}\")]");
+                        sb.AppendLine($"        [Alias(\"{col.Name}\")]");
                     }
 
                     if (col.PropertyType == "string" && col.Size > 0)
                     {
-                        sw.WriteLine($"        [StringLength({col.Size})]");
+                        sb.AppendLine($"        [StringLength({col.Size})]");
                     }
 
-                    if (col.IsAutoIncrement) sw.WriteLine("        [AutoIncrement]");
-                    if (col.IsComputed) sw.WriteLine("        [Compute]");
+                    if (col.IsAutoIncrement) sb.AppendLine("        [AutoIncrement]");
+                    if (col.IsComputed) sb.AppendLine("        [Compute]");
                     if (IncludeReferences && tbl.FKeys != null && tbl.FKeys.Any(x => x.FromColumn == col.PropertyName))
                     {
                         var toTable = MakeSingular
                             ? tbl.FKeys.First(x => x.FromColumn == col.PropertyName).ToTableSingular
                             : tbl.FKeys.First(x => x.FromColumn == col.PropertyName).ToTable;
-                        sw.WriteLine($"        [References(typeof({ClassPrefix + toTable + ClassSuffix}))]");
+                        sb.AppendLine($"        [References(typeof({ClassPrefix + toTable + ClassSuffix}))]");
 
                     }
 
                     if (col.IsNullable != true && col.IsAutoIncrement != true)
                     {
-                        sw.WriteLine("        [Required]");
+                        sb.AppendLine("        [Required]");
                     }
 
-                    if (!col.IsPK) sw.WriteLine($"        public {col.ProperPropertyType} {col.PropertyName} {{ get; set; }}");
+                    if (!col.IsPK) sb.AppendLine($"        public {col.ProperPropertyType} {col.PropertyName} {{ get; set; }}");
                     if (col.IsPK && UseIdAsPK)
                     {
-                        sw.WriteLine($"        public {col.ProperPropertyType} Id {{ get; set; }}");
+                        sb.AppendLine($"        public {col.ProperPropertyType} Id {{ get; set; }}");
                     }
 
                     if (col.IsPK && !UseIdAsPK)
                     {
-                        sw.WriteLine($@"		[PrimaryKey]
-		public {col.ProperPropertyType} {col.PropertyName} {{ get; set; }}");
+                        sb.AppendLine($@"        [PrimaryKey]
+        public {col.ProperPropertyType} {col.PropertyName} {{ get; set; }}");
                     }
 
 
@@ -139,8 +145,8 @@ namespace {Namespace}
 
                 if (CreateAutoQueryTypes)
                 {
-                    sw.WriteLine("    }");
-                    sw.WriteLine($@"	public partial class {tbl.ClassName}Query: QueryDb<{tbl.ClassName}>
+                    sb.AppendLine("    }");
+                    sb.AppendLine($@"	public partial class {tbl.ClassName}Query: QueryDb<{tbl.ClassName}>
 	{{");
                     foreach (SchemaReaderClass.Column col in from c in tbl.Columns where !c.Ignore select c)
                     {
@@ -152,24 +158,24 @@ namespace {Namespace}
                         var isGuid = col.ProperPropertyType.Contains("Guid");
                         if (!col.IsPK)
                         {
-                            sw.WriteLine(
+                            sb.AppendLine(
                                 $"	    public {(!isArray && !isString ? nullablePropType : col.ProperPropertyType)} {ormName} {{ get; set; }}");
                         }
 
                         if (col.IsPK && UseIdAsPK)
                         {
-                            sw.WriteLine($"	    public {(isString ? "string" : nullablePropType)} Id {{ get; set;}}");
+                            sb.AppendLine($"	    public {(isString ? "string" : nullablePropType)} Id {{ get; set;}}");
                         }
 
                         if (col.IsPK && !UseIdAsPK)
                         {
-                            sw.WriteLine(
+                            sb.AppendLine(
                                 $"	    public {(isString ? "string" : nullablePropType)} {col.PropertyName} {{ get; set; }}");
                         }
 
                         if (isString)
                         {
-                            sw.WriteLine(
+                            sb.AppendLine(
                                 $@"	    public {col.ProperPropertyType} {ormName}StartsWith {{ get; set; }}
 		public {col.ProperPropertyType} {ormName}EndsWith {{ get; set; }}
 		public {col.ProperPropertyType} {ormName}Contains {{ get; set; }}
@@ -183,7 +189,7 @@ namespace {Namespace}
                         {
                             if (!isGuid)
                             {
-                                sw.WriteLine(
+                                sb.AppendLine(
                                     $@"	    public {nullablePropType} {ormName}GreaterThanOrEqualTo {{ get; set; }}
 		public {nullablePropType} {ormName}GreaterThan {{ get; set; }}
 		public {nullablePropType} {ormName}LessThan {{ get; set; }}
@@ -193,17 +199,28 @@ namespace {Namespace}
 
                             }
 
-                            sw.WriteLine($"		public {col.ProperPropertyType}[] {ormName}In {{ get; set; }}");
+                            sb.AppendLine($"		public {col.ProperPropertyType}[] {ormName}In {{ get; set; }}");
                         }
                     }
 
 
                 }
-                sw.WriteLine("    }");
-                sw.WriteLine("}");
-                sw.Flush();
-                sw.Close();
-                sw.Dispose();
+                sb.AppendLine("    }");
+                sb.AppendLine();
+                if (SplitIntoMultipleFiles)
+                {
+                    if (!dic.ContainsKey(MultipleFileName))
+                    {
+                        dic.Add(MultipleFileName,"");
+                    }
+
+                    dic[MultipleFileName] = dic[MultipleFileName] + sb;
+                }
+                else
+                {
+                    dic.Add(tbl.Name + ".cs",sb.ToString());
+                }
+
             }
         }
     }
