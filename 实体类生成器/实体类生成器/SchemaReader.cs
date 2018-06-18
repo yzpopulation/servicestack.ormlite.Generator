@@ -951,8 +951,8 @@ namespace ConsoleApp3
                         col.Name = row["COLUMN_NAME"].ToString();
                         col.PropertyName = CleanUp(col.Name);
                         col.PropertyType = GetPropertyType(row);
-                        col.Size = GetDatatypeSize(row["DATA_TYPE"].ToString());
-                        col.Precision = GetDatatypePrecision(row["DATA_TYPE"].ToString());
+                        col.Size = GetDatatypeSize(row["COLUMN_TYPE"].ToString());
+                        col.Precision = GetDatatypePrecision(row["COLUMN_TYPE"].ToString());
                         col.IsNullable = row["IS_NULLABLE"].ToString() == "YES";
                         col.IsPK = row["COLUMN_KEY"].ToString() == "PRI";
                         col.IsAutoIncrement = row["extra"].ToString().ToLower().IndexOf("auto_increment") >= 0;
