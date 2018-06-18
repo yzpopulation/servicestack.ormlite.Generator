@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data.Common;
+using System.Data.SQLite;
+using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
 using DevLib.ExtensionMethods;
@@ -15,12 +18,12 @@ namespace 实体类生成器
         {
             InitializeComponent();
             DoubleBuffered(treeView1, true);
-//            treeView1.SetPropertyValue("DoubleBuffered", true, false);
+            modernTextBox_Saveto.Text = AppDomain.CurrentDomain.BaseDirectory;
         }
 
         #region field
 
-        public OrmLiteConnectionFactory fac { get; set; }
+        public string connectionstring { get; set; }
 
         #endregion
 
@@ -35,28 +38,19 @@ namespace 实体类生成器
 
         private void modernButton2_Click(object sender, EventArgs e)
         {
-//            fac           = new OrmLiteConnectionFactory(modernTextBox1.Text, SqliteOrmLiteDialectProvider.Instance);
-
+            connectionstring = "datasource=" + modernTextBox1.Text;
             try
             {
-//                using (var db = fac.OpenDbConnection())
-//                {
-                var gt = new GeneratorTables();
-                var sb = new MySqlConnectionStringBuilder();
-                sb.Server = "127.0.0.1";
-                sb.UserID = "root";
-                sb.Password = "root";
-                DbConnection p = new MySqlConnection(sb.ConnectionString);
-                p.Open();
-                gt.Generator(MySqlClientFactory.Instance, p);
-//                }
+                NewGenerator();
+                SchemaReaderClass.Tables tbs= GeneratorTables.GetInstance().GetTables(SQLiteFactory.Instance, connectionstring);
+                LoadTreeNodes(tbs);
             }
             catch (Exception ex)
             {
                 tips.Text = ex.Message;
             }
         }
-        public static void DoubleBuffered(Control dgv, bool setting)
+        private new static void DoubleBuffered(Control dgv, bool setting)
         {
             Type dgvType = dgv.GetType();
             PropertyInfo pi = dgvType.GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -117,5 +111,107 @@ namespace 实体类生成器
 
         #endregion
 
-  }
+        private void modernButton_Generate_Click(object sender, EventArgs e)
+        {
+            NewGenerator();
+            try
+            {
+                List<SchemaReaderClass.Table> tbs = new List<SchemaReaderClass.Table>();
+                foreach (TreeNode node in treeView1.Nodes)
+                {
+                    foreach (TreeNode n in node.Nodes)
+                    {
+                        if (n.Checked)
+                        {
+                            tbs.Add((SchemaReaderClass.Table)n.Tag);
+                        }
+                    }
+                }
+                if (tbs.Count>0)
+                {
+                    GeneratorTables.GetInstance().Generator(tbs, modernTextBox_Saveto.Text);
+                    MessageBox.Show("生成成功！");
+                    string path = Path.GetFullPath(modernTextBox_Saveto.Text);
+                    System.Diagnostics.Process.Start("explorer.exe", path);
+                }
+                else
+                {
+                    MessageBox.Show("请选择待生成表");
+                }
+               
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show("生成失败！");
+                MessageBox.Show(exception.Message);
+             
+            }
+        
+        
+
+        }
+        private void NewGenerator()
+        {
+            GeneratorTables.GetNewInstance(modernTextBox_namespace.Text,
+                                           modernCheckBox_MakeSingular.Checked,
+                                           modernTextBox_ClassPrefix.Text,
+                                           modernTextBox_ClassSuffix.Text,
+                                           modernCheckBox_SplitIntoMultipleFiles.Checked,
+                                           modernTextBox_MultipleFileName.Text,
+                                           modernCheckBox_GenerateConstructor.Checked);
+        }
+        private void LoadTreeNodes(SchemaReaderClass.Tables tbs)
+        {
+            treeView1.Nodes.Clear();
+            List<TreeNode> tns = new List<TreeNode>();
+            foreach (var tb in tbs)
+            {
+
+                string schema = tb.Schema.IsNullOrWhiteSpace() ? "NULL" : tb.Schema;
+                string table  = tb.Name;
+                var    find   = tns.Find(s => s.Text == schema);
+                if (find == null)
+                {
+                    TreeNode tn = new TreeNode(schema);
+                    find = tn;
+                    tns.Add(find);
+                }
+                TreeNode it = new TreeNode(table);
+                it.Tag = tb;
+                find.Nodes.Add(it);
+            }
+            foreach (TreeNode tn in tns)
+            {
+                treeView1.Nodes.Add(tn);
+            }
+        }
+
+        private void modernButton_Saveto_Click(object sender, EventArgs e)
+        {
+            var fdg = new FolderBrowserDialog();
+          if (fdg.ShowDialog() == DialogResult.OK) modernTextBox_Saveto.Text = fdg.SelectedPath;
+        }
+
+        private void modernButton3_Click(object sender, EventArgs e)
+        {
+            MySqlConnectionStringBuilder sb=new MySqlConnectionStringBuilder();
+            sb.Server = modernTextBox2.Text;
+            sb.Port =uint.Parse(modernTextBox3.Text);
+            sb.UserID = modernTextBox4.Text;
+            sb.Password = modernTextBox5.Text;
+
+
+            connectionstring = sb.ConnectionString;
+            try
+            {
+                NewGenerator();
+                SchemaReaderClass.Tables tbs = GeneratorTables.GetInstance().GetTables(MySqlClientFactory.Instance, connectionstring);
+                LoadTreeNodes(tbs);
+            }
+            catch (Exception ex)
+            {
+                tips.Text = ex.Message;
+            }
+        }
+    }
 }

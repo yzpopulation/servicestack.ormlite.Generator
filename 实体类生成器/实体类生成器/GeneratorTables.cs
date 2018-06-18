@@ -1,9 +1,10 @@
 ﻿#region using
+using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.IO;
 using System.Linq;
 using System.Text;
-using ConsoleApp3;
 using DevLib.ExtensionMethods;
 #endregion
 
@@ -11,29 +12,23 @@ namespace 实体类生成器
 {
     public class GeneratorTables
     {
-        private readonly bool
-            AddNamedConnection =
-                false; //if true: Adds NamedConnection attribute so AutoQuery will override default IDbConnection
-        private readonly string ConnectionStringName = "";
-        private readonly bool
-            CreateAutoQueryTypes =
-                false; //if true: Will create <TypeName>Query types with all possible search fields explicitly typed
-        private  Dictionary<string, string> dic { get; set; }
-        private readonly bool                       IncludeReferences  = false; //if true: Addes References(typeof(ReferenceTableType)) to FKs
-        private readonly bool                       UseIdAsPK          = false; // if true: Changes the primary key property name to Id
-        private readonly bool                       UseSchemaAttribute = true;  // if true: Adds explicit '[Schema]' attribute
-        private readonly string
-            UseSpecificNamedConnection =
-                ""; //if not null: Will use name provided as NamedConnection and AddNamedConnection = true, else ConnectionStringName is used as default NamedConnection
+        private readonly bool   AddNamedConnection         = false;
+        private readonly string ConnectionStringName       = "";
+        private readonly bool   CreateAutoQueryTypes       = false;
+        private readonly bool   IncludeReferences          = false;
+        private readonly bool   UseIdAsPK                  = false;
+        private readonly bool   UseSchemaAttribute         = true;
+        private readonly string UseSpecificNamedConnection = "";
+        private          string footer                     = "}";
         /// <summary>
         /// </summary>
-        /// <param name="Namespace">命名空间</param>
-        /// <param name="MakeSingular">使用前后缀函数</param>
-        /// <param name="ClassPrefix">Class前缀</param>
-        /// <param name="ClassSuffix">Class后缀</param>
-        /// <param name="SplitIntoMultipleFiles">创建单独文件</param>
-        /// <param name="MultipleFileName">创建单独文件文件名</param>
-        /// <param name="GenerateConstructor">创建构造函数</param>
+        /// <param name="_Namespace">命名空间</param>
+        /// <param name="_MakeSingular">使用前后缀函数</param>
+        /// <param name="_ClassPrefix">Class前缀</param>
+        /// <param name="_ClassSuffix">Class后缀</param>
+        /// <param name="_SplitIntoMultipleFiles">创建单独文件</param>
+        /// <param name="_MultipleFileName">创建单独文件文件名</param>
+        /// <param name="_GenerateConstructor">创建构造函数</param>
         public GeneratorTables(string _Namespace = "OrmLitePoco", bool _MakeSingular = true, string _ClassPrefix = "", string _ClassSuffix = "", bool _SplitIntoMultipleFiles = true, string _MultipleFileName = "OrmLitePoco", bool _GenerateConstructor = false)
         {
             Namespace              = _Namespace;
@@ -44,33 +39,7 @@ namespace 实体类生成器
             MultipleFileName       = _MultipleFileName;
             GenerateConstructor    = _GenerateConstructor;
         }
-        // Uses last connection string in config if not specified
-        //        string Namespace = "";
-        //        string ClassPrefix = "";
-        //        string ClassSuffix = "";
-        //        bool SplitIntoMultipleFiles = false; // if true: Generates one file for every class
-        //        string MultipleFileName = "MultipleFileName.cs";
-        //        bool MakeSingular = true; // if true: Changes the classname to singular if tablename is not singular
-        //        bool UseIdAsPK = false; // if true: Changes the primary key property name to Id
-        //        bool GenerateConstructor = false; // if true: Generates the default empty constructor
-        private string Namespace              { get; }
-        private string ClassPrefix            { get; }
-        private string ClassSuffix            { get; }
-        private bool   SplitIntoMultipleFiles { get; } // if true: Generates one file for every class
-        private string MultipleFileName       { get; }
-        private bool   MakeSingular           { get; } // if true: Changes the classname to singular if tablename is not singular
-        private bool   GenerateConstructor    { get; } // if true: Generates the default empty constructor
-
-        // Read schema
-        public void Generator(DbProviderFactory fac, DbConnection con)
-        {
-            dic = new Dictionary<string, string>();
-            var sr     = new SchemaReaderClass();
-            var tables = sr.LoadTables(MakeSingular, fac, con);
-
-//            if (string.IsNullOrEmpty(Namespace)) Namespace = ConnectionStringName;
-//            if (string.IsNullOrEmpty(Namespace)) Namespace = "OrmLitePoco";
-            var Headerstring = $@"using System;
+        private string header => $@"using System;
 
 using ServiceStack.DataAnnotations;
 using ServiceStack.Model;
@@ -78,14 +47,24 @@ using ServiceStack;
 
 namespace {Namespace}
 {{";
-            var Footerstring = "}";
+        private Dictionary<string, string> dic                    { get; set; }
+        private string                     Namespace              { get; }
+        private string                     ClassPrefix            { get; }
+        private string                     ClassSuffix            { get; }
+        private bool                       SplitIntoMultipleFiles { get; }
+        private string                     MultipleFileName       { get; }
+        private bool                       MakeSingular           { get; } 
+        private bool                       GenerateConstructor    { get; } 
+//        private SchemaReaderClass.Tables   Schematables           { get; set; }
+        // Read schema
+        public void Generator(List<SchemaReaderClass.Table> tables,string outerpath)
+        {
+            dic = new Dictionary<string, string>();
             foreach (var tbl in from t in tables
                                 where !t.Ignore
                                 select t)
             {
                 var sb = new StringBuilder();
-                //                StreamWriter sw = new StreamWriter(tbl.Name + ".cs");
-                //                sb.AppendLine(Headerstring);
                 sb.AppendLine();
                 if (CreateAutoQueryTypes && AddNamedConnection)
                     sb.AppendLine(
@@ -171,10 +150,10 @@ namespace {Namespace}
         public {nullablePropType} {ormName}LessThanOrEqualTo {{ get; set; }}
         public {nullablePropType} {ormName}NotEqualTo {{ get; set; }}
         public {col.ProperPropertyType}[] {ormName}Between {{ get; set; }}"
-                                                  );
+                                                 );
                                 sb.AppendLine($@"
         public {col.ProperPropertyType}[] {ormName}In {{ get; set; }}"
-                                              );
+                                             );
                             }
                     }
                 }
@@ -187,14 +166,43 @@ namespace {Namespace}
                 }
                 else
                 {
-                    string schema = "default";
-                    if (!tbl.Schema.IsNotNullNorWhiteSpace())
-                    {
-                        schema = tbl.Schema;
-                    }
-                    dic.Add(schema+"."+tbl.Name + ".cs", sb.ToString());
+                    var schema                                       = "default";
+                    if (!tbl.Schema.IsNotNullNorWhiteSpace()) schema = tbl.Schema;
+                    dic.Add(schema + "." + tbl.Name + ".cs", sb.ToString());
+                }
+            }
+
+            foreach (KeyValuePair<string, string> pair in dic)
+            {
+                using (StreamWriter sw=new StreamWriter(Path.Combine(outerpath,pair.Key)))
+                {
+                    sw.WriteLine(header);
+                    sw.WriteLine(pair.Value);
+                    sw.WriteLine(footer);
                 }
             }
         }
+
+        public SchemaReaderClass.Tables GetTables(DbProviderFactory fac, string con)
+        {
+            var sr     = new SchemaReaderClass();
+            SchemaReaderClass.Tables tables = sr.LoadTables(MakeSingular, fac, con);
+            return tables;
+        }
+
+        #region Instance
+        private static GeneratorTables Instance { get; set; }
+        public static GeneratorTables GetInstance(string _Namespace = "OrmLitePoco", bool _MakeSingular = true, string _ClassPrefix = "", string _ClassSuffix = "", bool _SplitIntoMultipleFiles = true, string _MultipleFileName = "OrmLitePoco", bool _GenerateConstructor = false)
+        {
+            return Instance ?? (Instance = new GeneratorTables( _Namespace , _MakeSingular, _ClassPrefix,  _ClassSuffix ,  _SplitIntoMultipleFiles ,_MultipleFileName, _GenerateConstructor));
+        }
+        public static GeneratorTables GetNewInstance(string _Namespace = "OrmLitePoco", bool _MakeSingular = true, string _ClassPrefix = "", string _ClassSuffix = "", bool _SplitIntoMultipleFiles = true, string _MultipleFileName = "OrmLitePoco", bool _GenerateConstructor = false)
+        {
+            Instance = new GeneratorTables(_Namespace, _MakeSingular, _ClassPrefix, _ClassSuffix, _SplitIntoMultipleFiles, _MultipleFileName, _GenerateConstructor);
+            return Instance;
+        }
+
+        #endregion
+     
     }
 }

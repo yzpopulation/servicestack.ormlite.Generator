@@ -6,12 +6,10 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using ServiceStack.OrmLite;
 
-namespace ConsoleApp3
+namespace 实体类生成器
 {
-    class SchemaReaderClass
+   public class SchemaReaderClass
     {
         string ConnectionStringName = "";
         string Namespace = "";
@@ -39,35 +37,31 @@ namespace ConsoleApp3
 
             public Column PK
             {
-                get { return this.Columns.SingleOrDefault(x => x.IsPK); }
+                get { return Columns.SingleOrDefault(x => x.IsPK); }
             }
 
             public Column GetColumn(string columnName)
             {
-                return Columns.Single(x => string.Compare(x.Name, columnName, true) == 0);
+                return Columns.Single(x => String.Compare(x.Name, columnName, StringComparison.OrdinalIgnoreCase) == 0);
             }
 
-            public Column this[string columnName]
-            {
-                get { return GetColumn(columnName); }
-            }
+            public Column this[string columnName] => GetColumn(columnName);
             //todo:eidted
             public bool HasPK()
             {
                 try
                 {
-                    return ((PK != null) && (string.IsNullOrEmpty(PK.Name) != true));
+                    return (PK != null) && (string.IsNullOrEmpty(PK.Name) != true);
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     return false;
                 }
-                return ((PK != null) && (string.IsNullOrEmpty(PK.Name) != true));
             }
 
             public TableIndex GetIndex(string indexName)
             {
-                return Indices.Single(x => string.Compare(x.Name, indexName, true) == 0);
+                return Indices.Single(x => String.Compare(x.Name, indexName, StringComparison.OrdinalIgnoreCase) == 0);
             }
         }
 
@@ -107,14 +101,10 @@ namespace ConsoleApp3
 
             public Table GetTable(string tableName)
             {
-                return this.Single(x => string.Compare(x.Name, tableName, true) == 0);
+                return this.Single(x => String.Compare(x.Name, tableName, StringComparison.OrdinalIgnoreCase) == 0);
             }
 
-            public Table this[string tableName]
-            {
-                get { return GetTable(tableName); }
-            }
-
+            public Table this[string tableName] => GetTable(tableName);
         }
 
         public class IndexColumn
@@ -680,7 +670,7 @@ namespace ConsoleApp3
             return null;
         }
 
-        internal abstract class SchemaReader
+        public abstract class SchemaReader
         {
             public abstract Tables ReadSchema(DbConnection connection, DbProviderFactory factory);
             public abstract List<SP> ReadSPList(DbConnection connection, DbProviderFactory factory);
@@ -878,6 +868,7 @@ namespace ConsoleApp3
                         sysType = "bool";
                         break;
                     case "image":
+                    case "blob":
                     case "binary":
                     case "varbinary":
                     case "timestamp":
@@ -2030,7 +2021,7 @@ WHERE   o.type = 'P'
 
         }
         #endregion
-      public  Tables LoadTables(bool makeSingular, DbProviderFactory fac,DbConnection con)
+      public  Tables LoadTables(bool makeSingular, DbProviderFactory fac,string connectionstring)
         {
 
             DbProviderFactory _factory;
@@ -2054,8 +2045,10 @@ WHERE   o.type = 'P'
             try
             {
                 Tables result;
-                using (var conn = con)
+                using (var conn = _factory.CreateConnection())
                 {
+                    conn.ConnectionString = connectionstring;
+                    conn.Open();
 
                     SchemaReader reader = null;
 
