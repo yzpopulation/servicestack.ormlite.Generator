@@ -8,7 +8,7 @@ using System.Windows.Forms;
 using DevLib.ExtensionMethods;
 using DevLib.ModernUI.Forms;
 using MySql.Data.MySqlClient;
-using ServiceStack.OrmLite;
+using Oracle.ManagedDataAccess.Client;
 
 namespace 实体类生成器
 {
@@ -206,6 +206,29 @@ namespace 实体类生成器
             {
                 NewGenerator();
                 SchemaReaderClass.Tables tbs = GeneratorTables.GetInstance().GetTables(MySqlClientFactory.Instance, connectionstring);
+                LoadTreeNodes(tbs);
+            }
+            catch (Exception ex)
+            {
+                tips.Text = ex.Message;
+            }
+        }
+
+        private void modernButton4_Click(object sender, EventArgs e)
+        {
+            OracleConnectionStringBuilder sb = new OracleConnectionStringBuilder();
+            sb.DataSource = modernTextBox9.Text;
+            sb.UserID = modernTextBox8.Text;
+            sb.Password = modernTextBox6.Text;
+            sb.ConnectionTimeout = 99999;
+
+
+
+            connectionstring = sb.ConnectionString;
+            try
+            {
+                NewGenerator();
+                SchemaReaderClass.Tables tbs = GeneratorTables.GetInstance().GetTables(OracleClientFactory.Instance, connectionstring);
                 LoadTreeNodes(tbs);
             }
             catch (Exception ex)

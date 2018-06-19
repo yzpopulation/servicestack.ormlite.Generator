@@ -1108,9 +1108,10 @@ namespace 实体类生成器
                             col.PropertyName = CleanUp(col.Name);
                             col.PropertyType = GetPropertyType(rdr["DataType"].ToString(),
                                 (rdr["DataType"] == DBNull.Value ? null : rdr["DataType"].ToString()));
-                            col.Size = GetDatatypeSize(rdr["DataType"].ToString());
+                            var bSize = int.TryParse(rdr["DataLength"].ToString(), out var size);
+                            col.Size = bSize?size:-1;
                             col.Precision = GetDatatypePrecision(rdr["DataType"].ToString());
-                            col.IsNullable = rdr["IsNullable"].ToString() == "YES";
+                            col.IsNullable = rdr["IsNullable"].ToString() == "Y";
                             col.IsAutoIncrement = false;
                             result.Add(col);
                         }
@@ -1228,10 +1229,11 @@ from USER_VIEWS";
             const string COLUMN_SQL = @"select table_name TableName,
  column_name ColumnName,
  data_type DataType,
+ data_length DataLength,
  data_scale DataScale,
  nullable IsNullable
  from USER_TAB_COLS utc
- where table_name = :tableName
+ where table_name = :tableName and hidden_column='NO'
  order by column_id";
 
         }
