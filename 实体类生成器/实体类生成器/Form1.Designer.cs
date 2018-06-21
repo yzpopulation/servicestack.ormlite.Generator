@@ -745,6 +745,7 @@
             this.Resizable = false;
             this.ShowStatusStrip = true;
             this.Text = "实体类生成器";
+            this.Icon = Properties.Resources.logo_64;
             this.UseMaximizeBox = false;
             this.Controls.SetChildIndex(this.modernTabControl1, 0);
             this.Controls.SetChildIndex(this.treeView1, 0);

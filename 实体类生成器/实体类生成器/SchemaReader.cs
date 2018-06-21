@@ -9,30 +9,230 @@ using System.Text.RegularExpressions;
 
 namespace 实体类生成器
 {
-   public class SchemaReaderClass
+    public class SchemaReaderClass
     {
-        string ConnectionStringName = "";
-        string Namespace = "";
-        string ClassPrefix = "";
-        string ClassSuffix = "";
-        string SchemaName = null;
-        bool IncludeViews = false;
-        bool IncludeFunctions = false;
-        bool IncludeSPReturnTypes = false;
+        private readonly string ClassPrefix = "";
+        private readonly string ClassSuffix = "";
+        private readonly string ConnectionStringName = "";
+        private readonly bool IncludeFunctions = false;
+        private readonly bool IncludeSPReturnTypes = false;
+        private readonly bool IncludeViews = false;
+        private string Namespace = "";
+        private readonly string SchemaName = null;
+
+        public Tables LoadTables(bool makeSingular, DbProviderFactory fac, string connectionstring)
+        {
+            DbProviderFactory _factory;
+            try
+            {
+                _factory = fac;
+            }
+            catch (Exception x)
+            {
+                var error = x.Message.Replace("\r\n", "\n").Replace("\n", " ");
+                Console.WriteLine($"Failed to load provider `{fac}` - {error}");
+                Console.WriteLine("");
+                Console.WriteLine(
+                    "// -----------------------------------------------------------------------------------------");
+                Console.WriteLine("// Failed to load provider `{0}` - {1}", fac, error);
+                Console.WriteLine(
+                    "// -----------------------------------------------------------------------------------------");
+                Console.WriteLine("");
+                throw x;
+                return new Tables();
+            }
+
+            Console.WriteLine("//     Factory Name:          `{0}`", _factory.GetType().Name);
+
+            try
+            {
+                Tables result;
+                using (var conn = _factory.CreateConnection())
+                {
+                    conn.ConnectionString = connectionstring;
+                    conn.Open();
+
+                    SchemaReader reader;
+
+                    if (_factory.GetType().Name == "MySqlClientFactory")
+                        reader = new MySqlSchemaReader();
+                    else if (_factory.GetType().Name == "NpgsqlFactory")
+                        reader = new PostGreSqlSchemaReader();
+                    else if (_factory.GetType().Name == "OracleClientFactory")
+                        reader = new OracleSchemaReader();
+                    else if (_factory.GetType().Name == "SQLiteFactory")
+                        reader = new SqliteSchemaReader();
+                    else
+                        reader = new SqlServerSchemaReader(IncludeSPReturnTypes);
+
+                    reader.outer = this;
+                    result = reader.ReadSchema(conn, _factory);
+
+                    // Remove unrequired tables/views
+                    for (var i = result.Count - 1; i >= 0; i--)
+                    {
+                        if (SchemaName != null && string.Compare(result[i].Schema, SchemaName, true) != 0)
+                        {
+                            result.RemoveAt(i);
+                            continue;
+                        }
+
+                        if (!IncludeViews && result[i].IsView || !IncludeFunctions && result[i].IsFunction)
+                            result.RemoveAt(i);
+                    }
+                }
+
+                var rxClean =
+                    new Regex(
+                        "^(Equals|GetHashCode|GetType|ToString|repo|Save|IsNew|Insert|Update|Delete|Exists|SingleOrDefault|Single|First|FirstOrDefault|Fetch|Page|Query)$");
+                foreach (var t in result)
+                {
+                    if (!makeSingular) t.ClassName = t.CleanName;
+                    t.ClassName = ClassPrefix + t.ClassName + ClassSuffix;
+
+                    foreach (var c in t.Columns)
+                    {
+                        c.PropertyName = rxClean.Replace(c.PropertyName, "_$1");
+
+                        // Make sure property name doesn't clash with class name
+                        if (c.PropertyName == t.ClassName)
+                            c.PropertyName = "_" + c.PropertyName;
+                    }
+                }
+
+                return result;
+            }
+            catch (Exception x)
+            {
+                var error = x.Message.Replace("\r\n", "\n").Replace("\n", " ");
+                Console.WriteLine("Failed to read database schema - {0}", error);
+                Console.WriteLine("");
+                Console.WriteLine(
+                    "// -----------------------------------------------------------------------------------------");
+                Console.WriteLine("// Failed to read database schema - {0}", error);
+                Console.WriteLine(
+                    "// -----------------------------------------------------------------------------------------");
+                Console.WriteLine("");
+                throw x;
+                return new Tables();
+            }
+        }
+
+        public List<SP> LoadSPs(DbProviderFactory fac, DbConnection con)
+        {
+            Console.WriteLine("// This file was automatically generated by the PetaPoco T4 Template");
+            Console.WriteLine("// Do not make changes directly to this file - edit the template instead");
+            Console.WriteLine("// ");
+            Console.WriteLine("// The following connection settings were used to generate this file");
+            Console.WriteLine("// ");
+            Console.WriteLine("//     Connection String Name: `{0}`", ConnectionStringName);
+            Console.WriteLine("//     Provider:               `{0}`", fac);
+            Console.WriteLine("//     Connection String:      `{0}`", fac);
+            Console.WriteLine("//     Schema:                 `{0}`", SchemaName);
+            Console.WriteLine("//     Include Views:          `{0}`", IncludeViews);
+            Console.WriteLine("");
+
+            DbProviderFactory _factory;
+            try
+            {
+                _factory = fac;
+            }
+            catch (Exception x)
+            {
+                var error = x.Message.Replace("\r\n", "\n").Replace("\n", " ");
+                Console.WriteLine("Failed to load provider `{0}` - {1}", fac, error);
+                Console.WriteLine("");
+                Console.WriteLine(
+                    "// -----------------------------------------------------------------------------------------");
+                Console.WriteLine("// Failed to load provider `{0}` - {1}", fac, error);
+                Console.WriteLine(
+                    "// -----------------------------------------------------------------------------------------");
+                Console.WriteLine("");
+                throw x;
+                return new List<SP>();
+            }
+
+            Console.WriteLine("//     Factory Name:          `{0}`", _factory.GetType().Name);
+
+            try
+            {
+                List<SP> result;
+                using (var conn = con)
+                {
+                    SchemaReader reader = null;
+
+                    if (_factory.GetType().Name == "MySqlClientFactory")
+                    {
+                        // MySql
+                        reader = new MySqlSchemaReader();
+                        return SPsNotSupported("MySqlClientFactory");
+                    }
+
+                    if (_factory.GetType().Name == "NpgsqlFactory")
+                    {
+                        // PostgreSQL
+                        reader = new PostGreSqlSchemaReader();
+                        return SPsNotSupported("NpgsqlFactory");
+                    }
+
+                    if (_factory.GetType().Name == "OracleClientFactory")
+                    {
+                        // Oracle
+                        reader = new OracleSchemaReader();
+                        return SPsNotSupported("OracleClientFactory");
+                    }
+
+                    if (_factory.GetType().Name == "SQLiteFactory")
+                    {
+                        // Sqlite
+                        reader = new SqliteSchemaReader();
+                        return SPsNotSupported("SQLiteFactory");
+                    }
+
+                    // Assume SQL Server
+                    reader = new SqlServerSchemaReader(IncludeSPReturnTypes);
+
+                    reader.outer = this;
+                    result = reader.ReadSPList(conn, _factory);
+                    // Remove unrequired procedures
+                    for (var i = result.Count - 1; i >= 0; i--)
+                        if (SchemaName != null && string.Compare(result[i].Schema, SchemaName, true) != 0)
+                            result.RemoveAt(i);
+                }
+
+                return result;
+            }
+            catch (Exception x)
+            {
+                var error = x.Message.Replace("\r\n", "\n").Replace("\n", " ");
+                Console.WriteLine("Failed to read database schema - {0}", error);
+                Console.WriteLine("");
+                Console.WriteLine(
+                    "// -----------------------------------------------------------------------------------------");
+                Console.WriteLine("// Failed to read database schema - {0}", error);
+                Console.WriteLine(
+                    "// -----------------------------------------------------------------------------------------");
+                Console.WriteLine("");
+                throw x;
+                return new List<SP>();
+            }
+        }
+
         #region common
+
         public class Table
         {
+            public string ClassName;
+            public string CleanName;
             public List<Column> Columns;
-            public List<TableIndex> Indices;
             public List<FKey> FKeys;
+            public bool Ignore;
+            public List<TableIndex> Indices;
+            public bool IsFunction;
+            public bool IsView;
             public string Name;
             public string Schema;
-            public bool IsView;
-            public bool IsFunction;
-            public string CleanName;
-            public string ClassName;
             public string SequenceName;
-            public bool Ignore;
             public string SQL;
 
             public Column PK
@@ -40,18 +240,19 @@ namespace 实体类生成器
                 get { return Columns.SingleOrDefault(x => x.IsPK); }
             }
 
+            public Column this[string columnName] => GetColumn(columnName);
+
             public Column GetColumn(string columnName)
             {
-                return Columns.Single(x => String.Compare(x.Name, columnName, StringComparison.OrdinalIgnoreCase) == 0);
+                return Columns.Single(x => string.Compare(x.Name, columnName, StringComparison.OrdinalIgnoreCase) == 0);
             }
 
-            public Column this[string columnName] => GetColumn(columnName);
             //todo:eidted
             public bool HasPK()
             {
                 try
                 {
-                    return (PK != null) && (string.IsNullOrEmpty(PK.Name) != true);
+                    return PK != null && string.IsNullOrEmpty(PK.Name) != true;
                 }
                 catch (Exception)
                 {
@@ -61,32 +262,29 @@ namespace 实体类生成器
 
             public TableIndex GetIndex(string indexName)
             {
-                return Indices.Single(x => String.Compare(x.Name, indexName, StringComparison.OrdinalIgnoreCase) == 0);
+                return Indices.Single(x => string.Compare(x.Name, indexName, StringComparison.OrdinalIgnoreCase) == 0);
             }
         }
 
         public class Column
         {
-            public string Name;
-            public string PropertyName;
-            public string PropertyType;
-            public bool IsPK;
-            public bool IsNullable;
+            public string DefaultValue;
+            public bool Ignore;
             public bool IsAutoIncrement;
             public bool IsComputed;
-            public bool Ignore;
-            public int Size;
+            public bool IsNullable;
+            public bool IsPK;
+            public string Name;
             public int Precision;
-            public string DefaultValue;
+            public string PropertyName;
+            public string PropertyType;
+            public int Size;
 
             public string ProperPropertyType
             {
                 get
                 {
-                    if (IsNullable)
-                    {
-                        return PropertyType + CheckNullable(this);
-                    }
+                    if (IsNullable) return PropertyType + CheckNullable(this);
 
                     return PropertyType;
                 }
@@ -95,53 +293,44 @@ namespace 实体类生成器
 
         public class Tables : List<Table>
         {
-            public Tables()
-            {
-            }
+            public Table this[string tableName] => GetTable(tableName);
 
             public Table GetTable(string tableName)
             {
-                return this.Single(x => String.Compare(x.Name, tableName, StringComparison.OrdinalIgnoreCase) == 0);
+                return this.Single(x => string.Compare(x.Name, tableName, StringComparison.OrdinalIgnoreCase) == 0);
             }
-
-            public Table this[string tableName] => GetTable(tableName);
         }
 
         public class IndexColumn
         {
-            public string Name;
             public bool IsAsc;
+            public string Name;
         }
 
         public class TableIndex
         {
-            public string Name;
             public List<IndexColumn> IndexColumns;
             public bool IsUnique;
+            public string Name;
             public string SQL;
         }
 
         public class FKey
         {
-            public string ToTable;
-            public string ToTableSingular;
             public string FromColumn;
             public string ToColumn;
+            public string ToTable;
+            public string ToTableSingular;
         }
 
         public class SP
         {
-            public string Name;
-            public string CleanName;
             public string ClassName;
-            public string Schema;
-
-            public string SchemaQualifiedName
-            {
-                get { return Schema + "." + Name; }
-            }
+            public string CleanName;
+            public string Name;
 
             public List<SPParam> Parameters;
+            public string Schema;
             public List<SPOutputColumn> SPOutputColumns;
 
             public SP()
@@ -150,12 +339,14 @@ namespace 实体类生成器
                 SPOutputColumns = new List<SPOutputColumn>();
             }
 
+            public string SchemaQualifiedName => Schema + "." + Name;
+
             public string ArgList
             {
                 get
                 {
-                    StringBuilder sb = new StringBuilder();
-                    int loopCount = 1;
+                    var sb = new StringBuilder();
+                    var loopCount = 1;
                     foreach (var par in Parameters)
                     {
                         sb.AppendFormat("{0} {1}", par.SysType, par.CleanName);
@@ -171,8 +362,8 @@ namespace 实体类生成器
 
         public class SPOutputColumn
         {
-            public string Name;
             public string DotNetType;
+            public string Name;
         }
 
         public enum SPParamDir
@@ -184,18 +375,18 @@ namespace 实体类生成器
 
         public class SPParam
         {
-            public string Name;
             public string CleanName;
-            public string SysType;
-            public string NullableSysType;
             public string DbType;
             public SPParamDir Direction;
+            public string Name;
+            public string NullableSysType;
+            public string SysType;
         }
 
 
-        static Regex rxCleanUp = new Regex(@"[^\w\d_]", RegexOptions.Compiled);
+        private static readonly Regex rxCleanUp = new Regex(@"[^\w\d_]", RegexOptions.Compiled);
 
-        static string[] cs_keywords =
+        private static readonly string[] cs_keywords =
         {
             "abstract", "event", "new", "struct", "as", "explicit", "null",
             "switch", "base", "extern", "object", "this", "bool", "false", "operator", "throw",
@@ -208,25 +399,20 @@ namespace 实体类生成器
             "stackalloc", "else", "long", "static", "enum", "namespace", "string"
         };
 
-        static Func<string, string> CleanUp = (str) =>
+        private static readonly Func<string, string> CleanUp = str =>
         {
             str = rxCleanUp.Replace(str, "_");
 
             if (char.IsDigit(str[0]))
-            {
                 str = "_" + str;
-            }
-            else if (cs_keywords.Contains(str))
-            {
-                str = "@" + str;
-            }
+            else if (cs_keywords.Contains(str)) str = "@" + str;
 
             return str;
         };
 
-        static string CheckNullable(Column col)
+        private static string CheckNullable(Column col)
         {
-            string result = "";
+            var result = "";
             if (col.IsNullable &&
                 col.PropertyType != "byte[]" &&
                 col.PropertyType != "string" &&
@@ -237,42 +423,38 @@ namespace 实体类生成器
             return result;
         }
 
-        static int GetDatatypePrecision(string type)
+        private static int GetDatatypePrecision(string type)
         {
-            int startPos = type.IndexOf(",");
+            var startPos = type.IndexOf(",");
             if (startPos < 0)
                 return -1;
-            int endPos = type.IndexOf(")");
+            var endPos = type.IndexOf(")");
             if (endPos < 0)
                 return -1;
-            string typePrecisionStr = type.Substring(startPos + 1, endPos - startPos - 1);
-            int result = -1;
+            var typePrecisionStr = type.Substring(startPos + 1, endPos - startPos - 1);
+            var result = -1;
             if (int.TryParse(typePrecisionStr, out result))
                 return result;
-            else
-                return -1;
+            return -1;
         }
 
-        static int GetDatatypeSize(string type)
+        private static int GetDatatypeSize(string type)
         {
-            int startPos = type.IndexOf("(");
+            var startPos = type.IndexOf("(");
             if (startPos < 0)
                 return -1;
-            int endPos = type.IndexOf(",");
-            if (endPos < 0)
-            {
-                endPos = type.IndexOf(")");
-            }
+            var endPos = type.IndexOf(",");
+            if (endPos < 0) endPos = type.IndexOf(")");
 
-            string typeSizeStr = type.Substring(startPos + 1, endPos - startPos - 1);
-            int result = -1;
+            var typeSizeStr = type.Substring(startPos + 1, endPos - startPos - 1);
+            var result = -1;
             if (int.TryParse(typeSizeStr, out result))
                 return result;
-            else
-                return -1;
+            return -1;
         }
+
         /// <summary>
-        /// Summary for the Inflector class
+        ///     Summary for the Inflector class
         /// </summary>
         public static class Inflector
         {
@@ -281,7 +463,7 @@ namespace 实体类生成器
             private static readonly List<string> _uncountables = new List<string>();
 
             /// <summary>
-            /// Initializes the <see cref="Inflector"/> class.
+            ///     Initializes the <see cref="Inflector" /> class.
             /// </summary>
             static Inflector()
             {
@@ -303,7 +485,7 @@ namespace 实体类生成器
                 AddPluralRule("^(ox)$", "$1en");
                 AddPluralRule("(quiz)$", "$1zes");
 
-                AddSingularRule("s$", String.Empty);
+                AddSingularRule("s$", string.Empty);
                 AddSingularRule("ss$", "ss");
                 AddSingularRule("(n)ews$", "$1ews");
                 AddSingularRule("([ti])a$", "$1um");
@@ -348,20 +530,20 @@ namespace 实体类生成器
             }
 
             /// <summary>
-            /// Adds the irregular rule.
+            ///     Adds the irregular rule.
             /// </summary>
             /// <param name="singular">The singular.</param>
             /// <param name="plural">The plural.</param>
             private static void AddIrregularRule(string singular, string plural)
             {
-                AddPluralRule(String.Concat("(", singular[0], ")", singular.Substring(1), "$"),
-                    String.Concat("$1", plural.Substring(1)));
-                AddSingularRule(String.Concat("(", plural[0], ")", plural.Substring(1), "$"),
-                    String.Concat("$1", singular.Substring(1)));
+                AddPluralRule(string.Concat("(", singular[0], ")", singular.Substring(1), "$"),
+                    string.Concat("$1", plural.Substring(1)));
+                AddSingularRule(string.Concat("(", plural[0], ")", plural.Substring(1), "$"),
+                    string.Concat("$1", singular.Substring(1)));
             }
 
             /// <summary>
-            /// Adds the unknown count rule.
+            ///     Adds the unknown count rule.
             /// </summary>
             /// <param name="word">The word.</param>
             private static void AddUnknownCountRule(string word)
@@ -370,7 +552,7 @@ namespace 实体类生成器
             }
 
             /// <summary>
-            /// Adds the plural rule.
+            ///     Adds the plural rule.
             /// </summary>
             /// <param name="rule">The rule.</param>
             /// <param name="replacement">The replacement.</param>
@@ -380,7 +562,7 @@ namespace 实体类生成器
             }
 
             /// <summary>
-            /// Adds the singular rule.
+            ///     Adds the singular rule.
             /// </summary>
             /// <param name="rule">The rule.</param>
             /// <param name="replacement">The replacement.</param>
@@ -390,7 +572,7 @@ namespace 实体类生成器
             }
 
             /// <summary>
-            /// Makes the plural.
+            ///     Makes the plural.
             /// </summary>
             /// <param name="word">The word.</param>
             /// <returns></returns>
@@ -400,7 +582,7 @@ namespace 实体类生成器
             }
 
             /// <summary>
-            /// Makes the singular.
+            ///     Makes the singular.
             /// </summary>
             /// <param name="word">The word.</param>
             /// <returns></returns>
@@ -410,43 +592,41 @@ namespace 实体类生成器
             }
 
             /// <summary>
-            /// Applies the rules.
+            ///     Applies the rules.
             /// </summary>
             /// <param name="rules">The rules.</param>
             /// <param name="word">The word.</param>
             /// <returns></returns>
             private static string ApplyRules(IList<InflectorRule> rules, string word)
             {
-                string result = word;
+                var result = word;
                 if (!_uncountables.Contains(word.ToLower()))
-                {
-                    for (int i = rules.Count - 1; i >= 0; i--)
+                    for (var i = rules.Count - 1; i >= 0; i--)
                     {
-                        string currentPass = rules[i].Apply(word);
+                        var currentPass = rules[i].Apply(word);
                         if (currentPass != null)
                         {
                             result = currentPass;
                             break;
                         }
                     }
-                }
 
                 return result;
             }
 
             /// <summary>
-            /// Converts the string to title case.
+            ///     Converts the string to title case.
             /// </summary>
             /// <param name="word">The word.</param>
             /// <returns></returns>
             public static string ToTitleCase(string word)
             {
                 return Regex.Replace(ToHumanCase(AddUnderscores(word)), @"\b([a-z])",
-                    delegate (Match match) { return match.Captures[0].Value.ToUpper(); });
+                    delegate(Match match) { return match.Captures[0].Value.ToUpper(); });
             }
 
             /// <summary>
-            /// Converts the string to human case.
+            ///     Converts the string to human case.
             /// </summary>
             /// <param name="lowercaseAndUnderscoredWord">The lowercase and underscored word.</param>
             /// <returns></returns>
@@ -456,7 +636,7 @@ namespace 实体类生成器
             }
 
             /// <summary>
-            /// Adds the underscores.
+            ///     Adds the underscores.
             /// </summary>
             /// <param name="pascalCasedWord">The pascal cased word.</param>
             /// <returns></returns>
@@ -469,41 +649,41 @@ namespace 实体类生成器
             }
 
             /// <summary>
-            /// Makes the initial caps.
+            ///     Makes the initial caps.
             /// </summary>
             /// <param name="word">The word.</param>
             /// <returns></returns>
             public static string MakeInitialCaps(string word)
             {
-                return String.Concat(word.Substring(0, 1).ToUpper(), word.Substring(1).ToLower());
+                return string.Concat(word.Substring(0, 1).ToUpper(), word.Substring(1).ToLower());
             }
 
             /// <summary>
-            /// Makes the initial lower case.
+            ///     Makes the initial lower case.
             /// </summary>
             /// <param name="word">The word.</param>
             /// <returns></returns>
             public static string MakeInitialLowerCase(string word)
             {
-                return String.Concat(word.Substring(0, 1).ToLower(), word.Substring(1));
+                return string.Concat(word.Substring(0, 1).ToLower(), word.Substring(1));
             }
 
 
             /// <summary>
-            /// Determine whether the passed string is numeric, by attempting to parse it to a double
+            ///     Determine whether the passed string is numeric, by attempting to parse it to a double
             /// </summary>
             /// <param name="str">The string to evaluated for numeric conversion</param>
             /// <returns>
-            /// 	<c>true</c> if the string can be converted to a number; otherwise, <c>false</c>.
+            ///     <c>true</c> if the string can be converted to a number; otherwise, <c>false</c>.
             /// </returns>
             public static bool IsStringNumeric(string str)
             {
                 double result;
-                return (double.TryParse(str, NumberStyles.Float, NumberFormatInfo.CurrentInfo, out result));
+                return double.TryParse(str, NumberStyles.Float, NumberFormatInfo.CurrentInfo, out result);
             }
 
             /// <summary>
-            /// Adds the ordinal suffix.
+            ///     Adds the ordinal suffix.
             /// </summary>
             /// <param name="number">The number.</param>
             /// <returns></returns>
@@ -511,22 +691,22 @@ namespace 实体类生成器
             {
                 if (IsStringNumeric(number))
                 {
-                    int n = int.Parse(number);
-                    int nMod100 = n % 100;
+                    var n = int.Parse(number);
+                    var nMod100 = n % 100;
 
                     if (nMod100 >= 11 && nMod100 <= 13)
-                        return String.Concat(number, "th");
+                        return string.Concat(number, "th");
 
                     switch (n % 10)
                     {
                         case 1:
-                            return String.Concat(number, "st");
+                            return string.Concat(number, "st");
                         case 2:
-                            return String.Concat(number, "nd");
+                            return string.Concat(number, "nd");
                         case 3:
-                            return String.Concat(number, "rd");
+                            return string.Concat(number, "rd");
                         default:
-                            return String.Concat(number, "th");
+                            return string.Concat(number, "th");
                     }
                 }
 
@@ -534,7 +714,7 @@ namespace 实体类生成器
             }
 
             /// <summary>
-            /// Converts the underscores to dashes.
+            ///     Converts the underscores to dashes.
             /// </summary>
             /// <param name="underscoredWord">The underscored word.</param>
             /// <returns></returns>
@@ -547,22 +727,20 @@ namespace 实体类生成器
             #region Nested type: InflectorRule
 
             /// <summary>
-            /// Summary for the InflectorRule class
+            ///     Summary for the InflectorRule class
             /// </summary>
             private class InflectorRule
             {
                 /// <summary>
-                ///
                 /// </summary>
                 public readonly Regex regex;
 
                 /// <summary>
-                ///
                 /// </summary>
                 public readonly string replacement;
 
                 /// <summary>
-                /// Initializes a new instance of the <see cref="InflectorRule"/> class.
+                ///     Initializes a new instance of the <see cref="InflectorRule" /> class.
                 /// </summary>
                 /// <param name="regexPattern">The regex pattern.</param>
                 /// <param name="replacementText">The replacement text.</param>
@@ -573,7 +751,7 @@ namespace 实体类生成器
                 }
 
                 /// <summary>
-                /// Applies the specified word.
+                ///     Applies the specified word.
                 /// </summary>
                 /// <param name="word">The word.</param>
                 /// <returns></returns>
@@ -582,7 +760,7 @@ namespace 实体类生成器
                     if (!regex.IsMatch(word))
                         return null;
 
-                    string replace = regex.Replace(word, replacement);
+                    var replace = regex.Replace(word, replacement);
                     if (word == word.ToUpper())
                         replace = replace.ToUpper();
 
@@ -595,7 +773,7 @@ namespace 实体类生成器
 
         public string GetColumnDefaultValue(Column col)
         {
-            string sysType = string.Format("\"{0}\"", col.DefaultValue);
+            var sysType = $"\"{col.DefaultValue}\"";
             switch (col.PropertyType.ToLower())
             {
                 case "long":
@@ -603,24 +781,26 @@ namespace 实体类生成器
                 case "double":
                 case "decimal":
                 case "bool":
-                    sysType = col.DefaultValue.ToString().Replace("'", "").Replace("\"", "");
+                    sysType = col.DefaultValue.Replace("'", "").Replace("\"", "");
                     break;
                 case "guid":
-                    sysType = string.Format("\"{0}\"", col.DefaultValue);
+                    sysType = $"\"{col.DefaultValue}\"";
                     break;
                 case "datetime":
                 {
-                    if (col.DefaultValue.ToLower() == "current_time" || col.DefaultValue.ToLower() == "current_date" || col.DefaultValue.ToLower() == "current_timestamp")
+                    if (col.DefaultValue.ToLower() == "current_time" || col.DefaultValue.ToLower() == "current_date" ||
+                        col.DefaultValue.ToLower() == "current_timestamp")
                         sysType = "SystemMethods.CurrentDateTime";
                     else
                         sysType = "\"" + col.DefaultValue + "\"";
                     break;
                 }
             }
+
             return sysType;
         }
 
-        string GetParamDirection(SPParamDir direction)
+        private string GetParamDirection(SPParamDir direction)
         {
             switch (direction)
             {
@@ -634,53 +814,66 @@ namespace 实体类生成器
             }
         }
 
-        List<SP> SPsNotSupported(string providerName)
+        private List<SP> SPsNotSupported(string providerName)
         {
             Console.WriteLine("SP function creation is not supported for " + providerName);
             Console.WriteLine("");
-            Console.WriteLine("// -----------------------------------------------------------------------------------------");
+            Console.WriteLine(
+                "// -----------------------------------------------------------------------------------------");
             Console.WriteLine("// SP function creation is not supported for  `{0}`", providerName);
-            Console.WriteLine("// -----------------------------------------------------------------------------------------");
+            Console.WriteLine(
+                "// -----------------------------------------------------------------------------------------");
             return new List<SP>();
         }
+
         public bool IsTableNameInList(string tableName, Tables tbls)
         {
             if (tbls == null)
                 return false;
             foreach (var tbItem in tbls)
-            {
-                if (String.Equals(tbItem.Name, tableName, StringComparison.InvariantCultureIgnoreCase))
-                {
+                if (string.Equals(tbItem.Name, tableName, StringComparison.InvariantCultureIgnoreCase))
                     return true;
-                }
-            }
             return false;
         }
+
         public Table GetTableFromListByName(string tableName, Tables tbls)
         {
             if (tbls == null)
                 return null;
             foreach (var tbItem in tbls)
-            {
-                if (String.Equals(tbItem.Name, tableName, StringComparison.InvariantCultureIgnoreCase))
-                {
+                if (string.Equals(tbItem.Name, tableName, StringComparison.InvariantCultureIgnoreCase))
                     return tbItem;
-                }
-            }
             return null;
         }
 
         public abstract class SchemaReader
         {
+            public object outer;
             public abstract Tables ReadSchema(DbConnection connection, DbProviderFactory factory);
             public abstract List<SP> ReadSPList(DbConnection connection, DbProviderFactory factory);
-            public object outer;
         }
 
         #endregion
+
         #region SchemaReader
-        public  class SqliteSchemaReader : SchemaReader
+
+        public class SqliteSchemaReader : SchemaReader
         {
+            private const string TABLE_SQL =
+                @"SELECT name, type , sql FROM sqlite_master WHERE type IN ('table','view') and name not in ('sqlite_sequence') ";
+
+            private const string COLUMN_SQL = @"pragma table_info({0})";
+
+            private const string INDEX_SQL =
+                @"SELECT name , sql  FROM sqlite_master WHERE type IN ('index') and lower(tbl_name) = lower('{0}')";
+
+            private const string INDEX_INFO_SQL = @"pragma index_info({0})";
+
+            private const string FKEY_INFO_SQL = @"pragma foreign_key_list({0})";
+            private DbConnection _connection;
+
+            private DbProviderFactory _factory;
+
             // SchemaReader.ReadSchema
             public override Tables ReadSchema(DbConnection connection, DbProviderFactory factory)
             {
@@ -698,7 +891,7 @@ namespace 实体类生成器
                     {
                         while (rdr.Read())
                         {
-                            Table tbl = new Table();
+                            var tbl = new Table();
                             tbl.Name = rdr["name"].ToString();
                             tbl.Schema = "";
                             tbl.IsView = string.Compare(rdr["type"].ToString(), "view", true) == 0;
@@ -719,14 +912,13 @@ namespace 实体类生成器
 
                 return result;
             }
+
             public override List<SP> ReadSPList(DbConnection connection, DbProviderFactory factory)
             {
                 return new List<SP>();
             }
-            DbConnection _connection;
-            DbProviderFactory _factory;
 
-            List<Column> LoadColumns(Table tbl)
+            private List<Column> LoadColumns(Table tbl)
             {
                 using (var cmd = _factory.CreateCommand())
                 {
@@ -738,11 +930,11 @@ namespace 实体类生成器
                     {
                         while (rdr.Read())
                         {
-                            Column col = new Column();
+                            var col = new Column();
                             col.Name = rdr["name"].ToString();
                             col.PropertyName = CleanUp(col.Name);
                             col.PropertyType = GetPropertyType(rdr["type"].ToString(),
-                                (rdr["type"] == DBNull.Value ? null : rdr["type"].ToString()));
+                                rdr["type"] == DBNull.Value ? null : rdr["type"].ToString());
                             col.Size = GetDatatypeSize(rdr["type"].ToString());
                             col.Precision = GetDatatypePrecision(rdr["type"].ToString());
                             col.IsNullable = rdr["notnull"].ToString() == "0";
@@ -761,7 +953,7 @@ namespace 实体类生成器
                 }
             }
 
-            List<TableIndex> LoadIndices(string tableName)
+            private List<TableIndex> LoadIndices(string tableName)
             {
                 var result = new List<TableIndex>();
                 using (var cmd1 = _factory.CreateCommand())
@@ -772,7 +964,7 @@ namespace 实体类生成器
                     {
                         while (rdr1.Read())
                         {
-                            TableIndex indx = new TableIndex();
+                            var indx = new TableIndex();
                             indx.Name = rdr1["name"].ToString();
                             indx.SQL = rdr1["sql"].ToString();
                             indx.IndexColumns = new List<IndexColumn>();
@@ -785,7 +977,7 @@ namespace 实体类生成器
                                 {
                                     while (rdr2.Read())
                                     {
-                                        IndexColumn col = new IndexColumn();
+                                        var col = new IndexColumn();
                                         col.Name = rdr2["name"].ToString();
                                         indx.IndexColumns.Add(col);
                                     }
@@ -800,7 +992,7 @@ namespace 实体类生成器
                 return result;
             }
 
-            List<FKey> LoadFKeys(string tblName)
+            private List<FKey> LoadFKeys(string tblName)
             {
                 using (var cmd = _factory.CreateCommand())
                 {
@@ -812,7 +1004,7 @@ namespace 实体类生成器
                     {
                         while (rdr.Read())
                         {
-                            FKey key = new FKey();
+                            var key = new FKey();
                             key.ToTable = rdr["table"].ToString();
                             key.ToColumn = rdr["to"].ToString();
                             key.FromColumn = rdr["from"].ToString();
@@ -825,9 +1017,9 @@ namespace 实体类生成器
             }
 
 
-            string GetPropertyType(string sqlType, string dataScale)
+            private string GetPropertyType(string sqlType, string dataScale)
             {
-                string sysType = "string";
+                var sysType = "string";
                 switch (sqlType.ToLower())
                 {
                     case "integer":
@@ -881,22 +1073,16 @@ namespace 实体类生成器
 
                 return sysType;
             }
-
-            const string TABLE_SQL =
-                @"SELECT name, type , sql FROM sqlite_master WHERE type IN ('table','view') and name not in ('sqlite_sequence') ";
-
-            const string COLUMN_SQL = @"pragma table_info({0})";
-
-            const string INDEX_SQL =
-                @"SELECT name , sql  FROM sqlite_master WHERE type IN ('index') and lower(tbl_name) = lower('{0}')";
-
-            const string INDEX_INFO_SQL = @"pragma index_info({0})";
-
-            const string FKEY_INFO_SQL = @"pragma foreign_key_list({0})";
-
         }
+
         public class MySqlSchemaReader : SchemaReader
         {
+            private const string TABLE_SQL = @"
+			SELECT *
+			FROM INFORMATION_SCHEMA.TABLES
+			WHERE (TABLE_TYPE='BASE TABLE' OR TABLE_TYPE='VIEW')
+			";
+
             // SchemaReader.ReadSchema
             public override Tables ReadSchema(DbConnection connection, DbProviderFactory factory)
             {
@@ -914,7 +1100,7 @@ namespace 实体类生成器
                     {
                         while (rdr.Read())
                         {
-                            Table tbl = new Table();
+                            var tbl = new Table();
                             tbl.Name = rdr["TABLE_NAME"].ToString();
                             tbl.Schema = rdr["TABLE_SCHEMA"].ToString();
                             tbl.IsView = string.Compare(rdr["TABLE_TYPE"].ToString(), "View", true) == 0;
@@ -938,7 +1124,7 @@ namespace 实体类生成器
                     var columns = schema.Select("TABLE_NAME='" + item.Name + "'");
                     foreach (var row in columns)
                     {
-                        Column col = new Column();
+                        var col = new Column();
                         col.Name = row["COLUMN_NAME"].ToString();
                         col.PropertyName = CleanUp(col.Name);
                         col.PropertyType = GetPropertyType(row);
@@ -953,7 +1139,6 @@ namespace 实体类生成器
                 }
 
                 return result;
-
             }
 
             public override List<SP> ReadSPList(DbConnection connection, DbProviderFactory factory)
@@ -961,10 +1146,10 @@ namespace 实体类生成器
                 return new List<SP>();
             }
 
-            static string GetPropertyType(DataRow row)
+            private static string GetPropertyType(DataRow row)
             {
-                bool bUnsigned = row["COLUMN_TYPE"].ToString().IndexOf("unsigned") >= 0;
-                string propType = "string";
+                var bUnsigned = row["COLUMN_TYPE"].ToString().IndexOf("unsigned") >= 0;
+                var propType = "string";
                 switch (row["DATA_TYPE"].ToString())
                 {
                     case "bigint":
@@ -1013,21 +1198,35 @@ namespace 实体类生成器
                     case "varbinary":
                         propType = "byte[]";
                         break;
-
                 }
 
                 return propType;
             }
-
-            const string TABLE_SQL = @"
-			SELECT *
-			FROM INFORMATION_SCHEMA.TABLES
-			WHERE (TABLE_TYPE='BASE TABLE' OR TABLE_TYPE='VIEW')
-			";
-
         }
-        public class OracleSchemaReader :SchemaReader
+
+        public class OracleSchemaReader : SchemaReader
         {
+            private const string TABLE_SQL = @"select TABLE_NAME, 'Table' TABLE_TYPE, USER TABLE_SCHEMA
+from USER_TABLES
+union all
+select VIEW_NAME, 'View', USER
+from USER_VIEWS";
+
+
+            private const string COLUMN_SQL = @"select table_name TableName,
+ column_name ColumnName,
+ data_type DataType,
+ data_length DataLength,
+ data_scale DataScale,
+ nullable IsNullable
+ from USER_TAB_COLS utc
+ where table_name = :tableName and hidden_column='NO'
+ order by column_id";
+
+            private DbConnection _connection;
+
+            private DbProviderFactory _factory;
+
             // SchemaReader.ReadSchema
             public override Tables ReadSchema(DbConnection connection, DbProviderFactory factory)
             {
@@ -1044,12 +1243,11 @@ namespace 实体类生成器
                 //pull the tables in a reader
                 using (cmd)
                 {
-
                     using (var rdr = cmd.ExecuteReader())
                     {
                         while (rdr.Read())
                         {
-                            Table tbl = new Table();
+                            var tbl = new Table();
                             tbl.Name = rdr["TABLE_NAME"].ToString();
                             tbl.Schema = rdr["TABLE_SCHEMA"].ToString();
                             tbl.IsView = string.Compare(rdr["TABLE_TYPE"].ToString(), "View", true) == 0;
@@ -1065,7 +1263,7 @@ namespace 实体类生成器
                     tbl.Columns = LoadColumns(tbl);
 
                     // Mark the primary key
-                    string PrimaryKey = GetPK(tbl.Name);
+                    var PrimaryKey = GetPK(tbl.Name);
                     var pkColumn =
                         tbl.Columns.SingleOrDefault(x => x.Name.ToLower().Trim() == PrimaryKey.ToLower().Trim());
                     if (pkColumn != null)
@@ -1075,18 +1273,15 @@ namespace 实体类生成器
 
                 return result;
             }
+
             public override List<SP> ReadSPList(DbConnection connection, DbProviderFactory factory)
             {
                 return new List<SP>();
             }
 
-            DbConnection _connection;
-            DbProviderFactory _factory;
 
-
-            List<Column> LoadColumns(Table tbl)
+            private List<Column> LoadColumns(Table tbl)
             {
-
                 using (var cmd = _factory.CreateCommand())
                 {
                     cmd.Connection = _connection;
@@ -1103,13 +1298,13 @@ namespace 实体类生成器
                     {
                         while (rdr.Read())
                         {
-                            Column col = new Column();
+                            var col = new Column();
                             col.Name = rdr["ColumnName"].ToString();
                             col.PropertyName = CleanUp(col.Name);
                             col.PropertyType = GetPropertyType(rdr["DataType"].ToString(),
-                                (rdr["DataType"] == DBNull.Value ? null : rdr["DataType"].ToString()));
+                                rdr["DataType"] == DBNull.Value ? null : rdr["DataType"].ToString());
                             var bSize = int.TryParse(rdr["DataLength"].ToString(), out var size);
-                            col.Size = bSize?size:-1;
+                            col.Size = bSize ? size : -1;
                             col.Precision = GetDatatypePrecision(rdr["DataType"].ToString());
                             col.IsNullable = rdr["IsNullable"].ToString() == "Y";
                             col.IsAutoIncrement = false;
@@ -1121,10 +1316,9 @@ namespace 实体类生成器
                 }
             }
 
-            string GetPK(string table)
+            private string GetPK(string table)
             {
-
-                string sql = @"select column_name from USER_CONSTRAINTS uc
+                var sql = @"select column_name from USER_CONSTRAINTS uc
   inner join USER_CONS_COLUMNS ucc on uc.constraint_name = ucc.constraint_name
 where uc.constraint_type = 'P'
 and uc.table_name = upper(:tableName)
@@ -1142,16 +1336,13 @@ and ucc.position = 1";
                     cmd.Parameters.Add(p);
 
                     var result = "";
-                    DbDataReader reader = cmd.ExecuteReader();
+                    var reader = cmd.ExecuteReader();
                     try
                     {
                         if (reader.Read())
                         {
                             result = reader[0].ToString();
-                            if (reader.Read())
-                            {
-                                result = "";
-                            }
+                            if (reader.Read()) result = "";
                         }
                     }
                     finally
@@ -1164,9 +1355,9 @@ and ucc.position = 1";
                 }
             }
 
-            string GetPropertyType(string sqlType, string dataScale)
+            private string GetPropertyType(string sqlType, string dataScale)
             {
-                string sysType = "string";
+                var sysType = "string";
                 switch (sqlType.ToLower())
                 {
                     case "bigint":
@@ -1205,6 +1396,8 @@ and ucc.position = 1";
                         break;
                     case "image":
                     case "binary":
+                    case "blob":
+                    case "clob":
                     case "varbinary":
                     case "timestamp":
                         sysType = "byte[]";
@@ -1216,29 +1409,44 @@ and ucc.position = 1";
 
                 return sysType;
             }
-
-
-
-            const string TABLE_SQL = @"select TABLE_NAME, 'Table' TABLE_TYPE, USER TABLE_SCHEMA
-from USER_TABLES
-union all
-select VIEW_NAME, 'View', USER
-from USER_VIEWS";
-
-
-            const string COLUMN_SQL = @"select table_name TableName,
- column_name ColumnName,
- data_type DataType,
- data_length DataLength,
- data_scale DataScale,
- nullable IsNullable
- from USER_TAB_COLS utc
- where table_name = :tableName and hidden_column='NO'
- order by column_id";
-
         }
-        public class PostGreSqlSchemaReader :SchemaReader
+
+        public class PostGreSqlSchemaReader : SchemaReader
         {
+            private const string TABLE_SQL = @"
+			SELECT TABLE_NAME, TABLE_SCHEMA, TABLE_TYPE
+			FROM INFORMATION_SCHEMA.TABLES
+			WHERE (TABLE_TYPE='BASE TABLE' OR TABLE_TYPE='VIEW')
+				AND TABLE_SCHEMA NOT IN ('pg_catalog', 'INFORMATION_SCHEMA');
+			";
+
+            private const string COLUMN_SQL = @"
+			SELECT COLUMN_NAME, IS_NULLABLE, UDT_NAME, COLUMN_DEFAULT
+			FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_NAME=@tableName;
+			";
+
+            private const string FOREIGN_KEYS_SQL = @"
+			SELECT
+				R.TABLE_NAME AS TableWithForeignKey,
+				R.COLUMN_NAME AS ForeignKeyColumn,
+				U.TABLE_NAME AS TargetTable,
+				U.COLUMN_NAME AS TargetTableKey
+			FROM INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE U
+			INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS FK
+    			ON U.CONSTRAINT_CATALOG = FK.UNIQUE_CONSTRAINT_CATALOG
+    			AND U.CONSTRAINT_SCHEMA = FK.UNIQUE_CONSTRAINT_SCHEMA
+   				AND U.CONSTRAINT_NAME = FK.UNIQUE_CONSTRAINT_NAME
+			INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE R
+    			ON R.CONSTRAINT_CATALOG = FK.CONSTRAINT_CATALOG
+    			AND R.CONSTRAINT_SCHEMA = FK.CONSTRAINT_SCHEMA
+    			AND R.CONSTRAINT_NAME = FK.CONSTRAINT_NAME
+			";
+
+            private DbConnection _connection;
+
+            private DbProviderFactory _factory;
+
             // SchemaReader.ReadSchema
             public override Tables ReadSchema(DbConnection connection, DbProviderFactory factory)
             {
@@ -1258,7 +1466,7 @@ from USER_VIEWS";
                     {
                         while (rdr.Read())
                         {
-                            Table tbl = new Table();
+                            var tbl = new Table();
                             tbl.Name = rdr["table_name"].ToString();
                             tbl.Schema = rdr["table_schema"].ToString();
                             tbl.IsView = string.Compare(rdr["table_type"].ToString(), "View", true) == 0;
@@ -1283,10 +1491,7 @@ from USER_VIEWS";
                             var table = result.FirstOrDefault(x => x.Name == tableName);
                             if (table != null)
                             {
-                                if (table.FKeys == null)
-                                {
-                                    table.FKeys = new List<FKey>();
-                                }
+                                if (table.FKeys == null) table.FKeys = new List<FKey>();
 
                                 var newForeignKey = new FKey();
                                 newForeignKey.ToTable = rdr["TargetTable"].ToString();
@@ -1304,7 +1509,7 @@ from USER_VIEWS";
                     tbl.Columns = LoadColumns(tbl);
 
                     // Mark the primary key
-                    string PrimaryKey = GetPK(tbl.Name);
+                    var PrimaryKey = GetPK(tbl.Name);
                     var pkColumn =
                         tbl.Columns.SingleOrDefault(x => x.Name.ToLower().Trim() == PrimaryKey.ToLower().Trim());
                     if (pkColumn != null)
@@ -1314,18 +1519,15 @@ from USER_VIEWS";
 
                 return result;
             }
+
             public override List<SP> ReadSPList(DbConnection connection, DbProviderFactory factory)
             {
                 return new List<SP>();
             }
 
-            DbConnection _connection;
-            DbProviderFactory _factory;
 
-
-            List<Column> LoadColumns(Table tbl)
+            private List<Column> LoadColumns(Table tbl)
             {
-
                 using (var cmd = _factory.CreateCommand())
                 {
                     cmd.Connection = _connection;
@@ -1341,7 +1543,7 @@ from USER_VIEWS";
                     {
                         while (rdr.Read())
                         {
-                            Column col = new Column();
+                            var col = new Column();
                             col.Name = rdr["column_name"].ToString();
                             col.PropertyName = CleanUp(col.Name);
                             col.PropertyType = GetPropertyType(rdr["udt_name"].ToString());
@@ -1357,10 +1559,9 @@ from USER_VIEWS";
                 }
             }
 
-            string GetPK(string table)
+            private string GetPK(string table)
             {
-
-                string sql = @"SELECT kcu.column_name
+                var sql = @"SELECT kcu.column_name
 			FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
 			JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
 			ON kcu.CONSTRAINT_NAME=tc.CONSTRAINT_NAME
@@ -1378,16 +1579,13 @@ from USER_VIEWS";
                     cmd.Parameters.Add(p);
 
                     var result = "";
-                    DbDataReader reader = cmd.ExecuteReader();
+                    var reader = cmd.ExecuteReader();
                     try
                     {
                         if (reader.Read())
                         {
                             result = reader[0].ToString();
-                            if (reader.Read())
-                            {
-                                result = "";
-                            }
+                            if (reader.Read()) result = "";
                         }
                     }
                     finally
@@ -1400,7 +1598,7 @@ from USER_VIEWS";
                 }
             }
 
-            string GetPropertyType(string sqlType)
+            private string GetPropertyType(string sqlType)
             {
                 switch (sqlType)
                 {
@@ -1444,43 +1642,91 @@ from USER_VIEWS";
                         return "string";
                 }
             }
-
-
-
-            const string TABLE_SQL = @"
-			SELECT TABLE_NAME, TABLE_SCHEMA, TABLE_TYPE
-			FROM INFORMATION_SCHEMA.TABLES
-			WHERE (TABLE_TYPE='BASE TABLE' OR TABLE_TYPE='VIEW')
-				AND TABLE_SCHEMA NOT IN ('pg_catalog', 'INFORMATION_SCHEMA');
-			";
-
-            const string COLUMN_SQL = @"
-			SELECT COLUMN_NAME, IS_NULLABLE, UDT_NAME, COLUMN_DEFAULT
-			FROM INFORMATION_SCHEMA.COLUMNS
-			WHERE TABLE_NAME=@tableName;
-			";
-
-            const string FOREIGN_KEYS_SQL = @"
-			SELECT
-				R.TABLE_NAME AS TableWithForeignKey,
-				R.COLUMN_NAME AS ForeignKeyColumn,
-				U.TABLE_NAME AS TargetTable,
-				U.COLUMN_NAME AS TargetTableKey
-			FROM INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE U
-			INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS FK
-    			ON U.CONSTRAINT_CATALOG = FK.UNIQUE_CONSTRAINT_CATALOG
-    			AND U.CONSTRAINT_SCHEMA = FK.UNIQUE_CONSTRAINT_SCHEMA
-   				AND U.CONSTRAINT_NAME = FK.UNIQUE_CONSTRAINT_NAME
-			INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE R
-    			ON R.CONSTRAINT_CATALOG = FK.CONSTRAINT_CATALOG
-    			AND R.CONSTRAINT_SCHEMA = FK.CONSTRAINT_SCHEMA
-    			AND R.CONSTRAINT_NAME = FK.CONSTRAINT_NAME
-			";
-
         }
-        public class SqlServerSchemaReader :SchemaReader
+
+        public class SqlServerSchemaReader : SchemaReader
         {
-            private bool IncludeSPReturnTypes;
+            private const string TABLE_SQL =
+                @"SELECT * FROM  INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' OR TABLE_TYPE='VIEW'
+								UNION
+							SELECT SPECIFIC_CATALOG, SPECIFIC_SCHEMA, SPECIFIC_NAME, 'TVF' FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'FUNCTION' AND DATA_TYPE = 'TABLE'";
+
+            private const string COLUMN_SQL = @"SELECT T.[Database] ,
+									   T.Owner ,
+									   T.TableName ,
+									   T.ColumnName ,
+									   T.OrdinalPosition ,
+									   T.DefaultSetting ,
+									   T.IsNullable ,
+									   T.DataType ,
+									   T.MaxLength ,
+									   T.DatePrecision ,
+									   T.IsIdentity ,
+									   T.IsComputed FROM (
+								SELECT
+											TABLE_CATALOG AS [Database],
+											TABLE_SCHEMA AS Owner,
+											TABLE_NAME AS TableName,
+											COLUMN_NAME AS ColumnName,
+											ORDINAL_POSITION AS OrdinalPosition,
+											COLUMN_DEFAULT AS DefaultSetting,
+											IS_NULLABLE AS IsNullable, DATA_TYPE AS DataType,
+											CHARACTER_MAXIMUM_LENGTH AS MaxLength,
+											DATETIME_PRECISION AS DatePrecision,
+											COLUMNPROPERTY(object_id('[' + TABLE_SCHEMA + '].[' + TABLE_NAME + ']'), COLUMN_NAME, 'IsIdentity') AS IsIdentity,
+											COLUMNPROPERTY(object_id('[' + TABLE_SCHEMA + '].[' + TABLE_NAME + ']'), COLUMN_NAME, 'IsComputed') as IsComputed
+										FROM  INFORMATION_SCHEMA.COLUMNS
+										WHERE TABLE_NAME=@tableName AND TABLE_SCHEMA=@schemaName
+										--ORDER BY OrdinalPosition ASC
+								UNION
+								SELECT TABLE_CATALOG AS [Database],
+											TABLE_SCHEMA AS Owner,
+											TABLE_NAME AS TableName,
+											COLUMN_NAME AS ColumnName,
+											ORDINAL_POSITION AS OrdinalPosition,
+											COLUMN_DEFAULT AS DefaultSetting,
+											IS_NULLABLE AS IsNullable, DATA_TYPE AS DataType,
+											CHARACTER_MAXIMUM_LENGTH AS MaxLength,
+											DATETIME_PRECISION AS DatePrecision,
+											COLUMNPROPERTY(object_id('[' + TABLE_SCHEMA + '].[' + TABLE_NAME + ']'), COLUMN_NAME, 'IsIdentity') AS IsIdentity,
+											COLUMNPROPERTY(object_id('[' + TABLE_SCHEMA + '].[' + TABLE_NAME + ']'), COLUMN_NAME, 'IsComputed') as IsComputed  
+								FROM INFORMATION_SCHEMA.ROUTINE_COLUMNS
+								WHERE TABLE_NAME=@tableName AND TABLE_SCHEMA=@schemaName
+								) T
+								ORDER BY T.OrdinalPosition ASC";
+
+            private const string FOREIGN_KEYS_SQL =
+                @"SELECT DISTINCT
+	tableWithForeignKey.name AS TableWithForeignKey,
+	columnWithForeignKey.name AS ForeignKeyColumn,
+	referencedTable.name AS TargetTable,
+	referencedColumn.name AS TargetTableKey
+FROM sys.foreign_key_columns foreignKeyColumn
+INNER JOIN sys.tables tableWithForeignKey ON tableWithForeignKey.object_id = foreignKeyColumn.parent_object_id
+INNER JOIN sys.columns columnWithForeignKey ON columnWithForeignKey.object_id = foreignKeyColumn.parent_object_id 
+	AND columnWithForeignKey.column_id = foreignKeyColumn.parent_column_id
+INNER JOIN sys.tables referencedTable ON referencedTable.object_id = foreignKeyColumn.referenced_object_id
+INNER JOIN sys.columns referencedColumn ON referencedColumn.object_id = foreignKeyColumn.referenced_object_id 
+	AND referencedColumn.column_id = foreignKeyColumn.referenced_column_id";
+
+            private const string SP_NAMES_SQL = @"SELECT  o.name AS sp_name, s.name AS schema_name
+FROM    sys.objects o
+        INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
+WHERE   o.type = 'P'
+        AND o.name NOT IN ( 'fn_diagramobjects', 'sp_alterdiagram',
+                            'sp_creatediagram', 'sp_dropdiagram',
+                            'sp_helpdiagramdefinition', 'sp_helpdiagrams',
+                            'sp_renamediagram', 'sp_upgraddiagrams',
+                            'sysdiagrams' )";
+
+
+            private const string SP_PARAMETERS_SQL = @"SELECT * from INFORMATION_SCHEMA.PARAMETERS
+                                where SPECIFIC_NAME = @spname
+                                order by ORDINAL_POSITION";
+
+            private DbConnection _connection;
+            private DbProviderFactory _factory;
+            private readonly bool IncludeSPReturnTypes;
 
             public SqlServerSchemaReader(bool includeSPReturnTypes)
             {
@@ -1503,12 +1749,11 @@ from USER_VIEWS";
                 //pull the tables in a reader
                 using (cmd)
                 {
-
                     using (var rdr = cmd.ExecuteReader())
                     {
                         while (rdr.Read())
                         {
-                            Table tbl = new Table();
+                            var tbl = new Table();
                             tbl.Name = rdr["TABLE_NAME"].ToString();
                             tbl.Schema = rdr["TABLE_SCHEMA"].ToString();
                             tbl.IsView = string.Compare(rdr["TABLE_TYPE"].ToString(), "View", true) == 0;
@@ -1535,10 +1780,7 @@ from USER_VIEWS";
                             var table = result.FirstOrDefault(x => x.Name == tableName);
                             if (table != null)
                             {
-                                if (table.FKeys == null)
-                                {
-                                    table.FKeys = new List<FKey>();
-                                }
+                                if (table.FKeys == null) table.FKeys = new List<FKey>();
 
                                 var newForeignKey = new FKey();
                                 newForeignKey.ToTable = rdr["TargetTable"].ToString();
@@ -1556,13 +1798,10 @@ from USER_VIEWS";
                     tbl.Columns = LoadColumns(tbl);
 
                     // Mark the primary key
-                    string PrimaryKey = GetPK(tbl.Name);
+                    var PrimaryKey = GetPK(tbl.Name);
                     var pkColumn =
                         tbl.Columns.SingleOrDefault(x => x.Name.ToLower().Trim() == PrimaryKey.ToLower().Trim());
-                    if (pkColumn != null)
-                    {
-                        pkColumn.IsPK = true;
-                    }
+                    if (pkColumn != null) pkColumn.IsPK = true;
                 }
 
 
@@ -1587,7 +1826,7 @@ from USER_VIEWS";
                     {
                         while (rdr.Read())
                         {
-                            SP sp = new SP();
+                            var sp = new SP();
                             sp.Name = rdr["sp_name"].ToString();
                             sp.Schema = rdr["schema_name"].ToString();
                             sp.CleanName = CleanUp(sp.Name);
@@ -1606,12 +1845,8 @@ from USER_VIEWS";
                 return result;
             }
 
-            DbConnection _connection;
-            DbProviderFactory _factory;
-
-            List<Column> LoadColumns(Table tbl)
+            private List<Column> LoadColumns(Table tbl)
             {
-
                 using (var cmd = _factory.CreateCommand())
                 {
                     cmd.Connection = _connection;
@@ -1632,15 +1867,15 @@ from USER_VIEWS";
                     {
                         while (rdr.Read())
                         {
-                            Column col = new Column();
+                            var col = new Column();
                             col.Name = rdr["ColumnName"].ToString();
                             col.PropertyName = CleanUp(col.Name);
                             col.PropertyType = GetPropertyType(rdr["DataType"].ToString());
                             col.Size = GetDatatypeSize(rdr["DataType"].ToString());
                             col.Precision = GetDatatypePrecision(rdr["DataType"].ToString());
                             col.IsNullable = rdr["IsNullable"].ToString() == "YES";
-                            col.IsAutoIncrement = ((int)rdr["IsIdentity"]) == 1;
-                            col.IsComputed = ((int)rdr["IsComputed"]) == 1;
+                            col.IsAutoIncrement = (int) rdr["IsIdentity"] == 1;
+                            col.IsComputed = (int) rdr["IsComputed"] == 1;
                             result.Add(col);
                         }
                     }
@@ -1649,7 +1884,7 @@ from USER_VIEWS";
                 }
             }
 
-            List<SPParam> LoadSPParams(SP sp)
+            private List<SPParam> LoadSPParams(SP sp)
             {
                 using (var cmd = _factory.CreateCommand())
                 {
@@ -1668,10 +1903,10 @@ from USER_VIEWS";
                         {
                             if (rdr["IS_RESULT"].ToString().ToUpper() == "YES")
                                 continue;
-                            SPParam param = new SPParam();
+                            var param = new SPParam();
                             param.SysType = GetPropertyType(rdr["DATA_TYPE"].ToString());
                             param.NullableSysType = GetNullablePropertyType(rdr["DATA_TYPE"].ToString());
-                            param.DbType = GetDbType(rdr["DATA_TYPE"].ToString()).ToString();
+                            param.DbType = GetDbType(rdr["DATA_TYPE"].ToString());
                             param.Name = rdr["PARAMETER_NAME"].ToString().Replace("@", "");
                             param.CleanName = CleanUp(param.Name);
                             if (rdr["PARAMETER_MODE"].ToString().ToUpper() == "OUT")
@@ -1688,7 +1923,7 @@ from USER_VIEWS";
                 }
             }
 
-            List<SPOutputColumn> LoadSPOutputColumns(SP sp)
+            private List<SPOutputColumn> LoadSPOutputColumns(SP sp)
             {
                 var result = new List<SPOutputColumn>();
                 using (var cmd = _factory.CreateCommand())
@@ -1701,10 +1936,9 @@ from USER_VIEWS";
                     using (IDataReader rdr = cmd.ExecuteReader())
                     {
                         while (rdr.Read())
-                        {
                             if (!rdr.IsDBNull(0))
                             {
-                                SPOutputColumn param = new SPOutputColumn();
+                                var param = new SPOutputColumn();
                                 param.Name = rdr["name"].ToString();
 
                                 var sqlType = rdr["system_type_name"].ToString();
@@ -1713,17 +1947,12 @@ from USER_VIEWS";
 
                                 var nullable = rdr["is_nullable"].ToString();
                                 if (nullable == "0")
-                                {
                                     param.DotNetType = GetPropertyType(sqlType);
-                                }
                                 else
-                                {
                                     param.DotNetType = GetNullablePropertyType(sqlType);
-                                }
 
                                 if (!result.Any(t => t.Name == param.Name)) result.Add(param);
                             }
-                        }
                     }
                 }
 
@@ -1731,10 +1960,9 @@ from USER_VIEWS";
             }
 
 
-            string GetPK(string table)
+            private string GetPK(string table)
             {
-
-                string sql = @"SELECT c.name AS ColumnName
+                var sql = @"SELECT c.name AS ColumnName
                 FROM sys.indexes AS i
                 INNER JOIN sys.index_columns AS ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
                 INNER JOIN sys.objects AS o ON i.object_id = o.object_id
@@ -1752,16 +1980,13 @@ from USER_VIEWS";
                     cmd.Parameters.Add(p);
 
                     var result = "";
-                    DbDataReader reader = cmd.ExecuteReader();
+                    var reader = cmd.ExecuteReader();
                     try
                     {
                         if (reader.Read())
                         {
                             result = reader[0].ToString();
-                            if (reader.Read())
-                            {
-                                result = "";
-                            }
+                            if (reader.Read()) result = "";
                         }
                     }
                     finally
@@ -1774,23 +1999,22 @@ from USER_VIEWS";
                 }
             }
 
-            string GetPropertyType(string sqlType)
+            private string GetPropertyType(string sqlType)
             {
                 string propertyType, dbType;
                 GetPropertyAndDbType(sqlType, out propertyType, out dbType);
                 return propertyType;
             }
 
-            string GetNullablePropertyType(string sqlType)
+            private string GetNullablePropertyType(string sqlType)
             {
-                string value = GetPropertyType(sqlType);
+                var value = GetPropertyType(sqlType);
                 if (value.ToUpper() != "STRING" && value.ToUpper() != "BYTE[]")
                     return value + "?";
-                else
-                    return value;
+                return value;
             }
 
-            string GetDbType(string sqlType)
+            private string GetDbType(string sqlType)
             {
                 string propertyType, dbType;
                 GetPropertyAndDbType(sqlType, out propertyType, out dbType);
@@ -1798,10 +2022,10 @@ from USER_VIEWS";
             }
 
 
-            void GetPropertyAndDbType(string sqlType, out string propertyType, out string dbType)
+            private void GetPropertyAndDbType(string sqlType, out string propertyType, out string dbType)
             {
-                string sysType = "string";
-                string sysDbType = "DbType.String";
+                var sysType = "string";
+                var sysDbType = "DbType.String";
                 switch (sqlType)
                 {
                     case "varchar":
@@ -1880,9 +2104,9 @@ from USER_VIEWS";
                 dbType = sysDbType;
             }
 
-            string GetDBType(string sqlType)
+            private string GetDBType(string sqlType)
             {
-                string sysType = "string";
+                var sysType = "string";
                 switch (sqlType)
                 {
                     case "bigint":
@@ -1941,303 +2165,8 @@ from USER_VIEWS";
 
                 return sysType;
             }
-
-
-            const string TABLE_SQL =
-                @"SELECT * FROM  INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' OR TABLE_TYPE='VIEW'
-								UNION
-							SELECT SPECIFIC_CATALOG, SPECIFIC_SCHEMA, SPECIFIC_NAME, 'TVF' FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'FUNCTION' AND DATA_TYPE = 'TABLE'";
-
-            const string COLUMN_SQL = @"SELECT T.[Database] ,
-									   T.Owner ,
-									   T.TableName ,
-									   T.ColumnName ,
-									   T.OrdinalPosition ,
-									   T.DefaultSetting ,
-									   T.IsNullable ,
-									   T.DataType ,
-									   T.MaxLength ,
-									   T.DatePrecision ,
-									   T.IsIdentity ,
-									   T.IsComputed FROM (
-								SELECT
-											TABLE_CATALOG AS [Database],
-											TABLE_SCHEMA AS Owner,
-											TABLE_NAME AS TableName,
-											COLUMN_NAME AS ColumnName,
-											ORDINAL_POSITION AS OrdinalPosition,
-											COLUMN_DEFAULT AS DefaultSetting,
-											IS_NULLABLE AS IsNullable, DATA_TYPE AS DataType,
-											CHARACTER_MAXIMUM_LENGTH AS MaxLength,
-											DATETIME_PRECISION AS DatePrecision,
-											COLUMNPROPERTY(object_id('[' + TABLE_SCHEMA + '].[' + TABLE_NAME + ']'), COLUMN_NAME, 'IsIdentity') AS IsIdentity,
-											COLUMNPROPERTY(object_id('[' + TABLE_SCHEMA + '].[' + TABLE_NAME + ']'), COLUMN_NAME, 'IsComputed') as IsComputed
-										FROM  INFORMATION_SCHEMA.COLUMNS
-										WHERE TABLE_NAME=@tableName AND TABLE_SCHEMA=@schemaName
-										--ORDER BY OrdinalPosition ASC
-								UNION
-								SELECT TABLE_CATALOG AS [Database],
-											TABLE_SCHEMA AS Owner,
-											TABLE_NAME AS TableName,
-											COLUMN_NAME AS ColumnName,
-											ORDINAL_POSITION AS OrdinalPosition,
-											COLUMN_DEFAULT AS DefaultSetting,
-											IS_NULLABLE AS IsNullable, DATA_TYPE AS DataType,
-											CHARACTER_MAXIMUM_LENGTH AS MaxLength,
-											DATETIME_PRECISION AS DatePrecision,
-											COLUMNPROPERTY(object_id('[' + TABLE_SCHEMA + '].[' + TABLE_NAME + ']'), COLUMN_NAME, 'IsIdentity') AS IsIdentity,
-											COLUMNPROPERTY(object_id('[' + TABLE_SCHEMA + '].[' + TABLE_NAME + ']'), COLUMN_NAME, 'IsComputed') as IsComputed  
-								FROM INFORMATION_SCHEMA.ROUTINE_COLUMNS
-								WHERE TABLE_NAME=@tableName AND TABLE_SCHEMA=@schemaName
-								) T
-								ORDER BY T.OrdinalPosition ASC";
-
-            const string FOREIGN_KEYS_SQL =
-                @"SELECT DISTINCT
-	tableWithForeignKey.name AS TableWithForeignKey,
-	columnWithForeignKey.name AS ForeignKeyColumn,
-	referencedTable.name AS TargetTable,
-	referencedColumn.name AS TargetTableKey
-FROM sys.foreign_key_columns foreignKeyColumn
-INNER JOIN sys.tables tableWithForeignKey ON tableWithForeignKey.object_id = foreignKeyColumn.parent_object_id
-INNER JOIN sys.columns columnWithForeignKey ON columnWithForeignKey.object_id = foreignKeyColumn.parent_object_id 
-	AND columnWithForeignKey.column_id = foreignKeyColumn.parent_column_id
-INNER JOIN sys.tables referencedTable ON referencedTable.object_id = foreignKeyColumn.referenced_object_id
-INNER JOIN sys.columns referencedColumn ON referencedColumn.object_id = foreignKeyColumn.referenced_object_id 
-	AND referencedColumn.column_id = foreignKeyColumn.referenced_column_id";
-
-            const string SP_NAMES_SQL = @"SELECT  o.name AS sp_name, s.name AS schema_name
-FROM    sys.objects o
-        INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
-WHERE   o.type = 'P'
-        AND o.name NOT IN ( 'fn_diagramobjects', 'sp_alterdiagram',
-                            'sp_creatediagram', 'sp_dropdiagram',
-                            'sp_helpdiagramdefinition', 'sp_helpdiagrams',
-                            'sp_renamediagram', 'sp_upgraddiagrams',
-                            'sysdiagrams' )";
-
-
-            const string SP_PARAMETERS_SQL = @"SELECT * from INFORMATION_SCHEMA.PARAMETERS
-                                where SPECIFIC_NAME = @spname
-                                order by ORDINAL_POSITION";
-
         }
+
         #endregion
-      public  Tables LoadTables(bool makeSingular, DbProviderFactory fac,string connectionstring)
-        {
-
-            DbProviderFactory _factory;
-            try
-            {
-                _factory = fac;
-            }
-            catch (Exception x)
-            {
-                var error = x.Message.Replace("\r\n", "\n").Replace("\n", " ");
-                Console.WriteLine($"Failed to load provider `{fac}` - {error}");
-                Console.WriteLine("");
-                Console.WriteLine("// -----------------------------------------------------------------------------------------");
-                Console.WriteLine("// Failed to load provider `{0}` - {1}", fac, error);
-                Console.WriteLine("// -----------------------------------------------------------------------------------------");
-                Console.WriteLine("");
-                return new Tables();
-            }
-            Console.WriteLine("//     Factory Name:          `{0}`", _factory.GetType().Name);
-
-            try
-            {
-                Tables result;
-                using (var conn = _factory.CreateConnection())
-                {
-                    conn.ConnectionString = connectionstring;
-                    conn.Open();
-
-                    SchemaReader reader = null;
-
-                    if (_factory.GetType().Name == "MySqlClientFactory")
-                    {
-                        // MySql
-                        reader = new MySqlSchemaReader();
-                    }
-                    else if (_factory.GetType().Name == "NpgsqlFactory")
-                    {
-                        // PostgreSQL
-                        reader = new PostGreSqlSchemaReader();
-                    }
-                    else if (_factory.GetType().Name == "OracleClientFactory")
-                    {
-                        // Oracle
-                        reader = new OracleSchemaReader();
-                    }
-                    else if (_factory.GetType().Name == "SQLiteFactory")
-                    {
-                        // Sqlite
-                        reader = new SqliteSchemaReader();
-                    }
-                    else
-                    {
-                        // Assume SQL Server
-                        reader = new SqlServerSchemaReader(IncludeSPReturnTypes);
-                    }
-
-                    reader.outer = this;
-                    result = reader.ReadSchema(conn, _factory);
-
-                    // Remove unrequired tables/views
-                    for (int i = result.Count - 1; i >= 0; i--)
-                    {
-                        if (SchemaName != null && string.Compare(result[i].Schema, SchemaName, true) != 0)
-                        {
-                            result.RemoveAt(i);
-                            continue;
-                        }
-                        if ((!IncludeViews && result[i].IsView) || (!IncludeFunctions && result[i].IsFunction))
-                        {
-                            result.RemoveAt(i);
-                            continue;
-                        }
-                    }
-                }
-
-                var rxClean = new Regex("^(Equals|GetHashCode|GetType|ToString|repo|Save|IsNew|Insert|Update|Delete|Exists|SingleOrDefault|Single|First|FirstOrDefault|Fetch|Page|Query)$");
-                foreach (var t in result)
-                {
-                    if (!makeSingular)
-                    {
-                        t.ClassName = t.CleanName;
-                    }
-                    t.ClassName = ClassPrefix + t.ClassName + ClassSuffix;
-
-                    foreach (var c in t.Columns)
-                    {
-                        c.PropertyName = rxClean.Replace(c.PropertyName, "_$1");
-
-                        // Make sure property name doesn't clash with class name
-                        if (c.PropertyName == t.ClassName)
-                            c.PropertyName = "_" + c.PropertyName;
-                    }
-                }
-
-                return result;
-
-            }
-            catch (Exception x)
-            {
-                var error = x.Message.Replace("\r\n", "\n").Replace("\n", " ");
-                Console.WriteLine(string.Format("Failed to read database schema - {0}", error));
-                Console.WriteLine("");
-                Console.WriteLine("// -----------------------------------------------------------------------------------------");
-                Console.WriteLine("// Failed to read database schema - {0}", error);
-                Console.WriteLine("// -----------------------------------------------------------------------------------------");
-                Console.WriteLine("");
-                return new Tables();
-            }
-
-
-        }
-
-        public List<SP> LoadSPs(DbProviderFactory fac, DbConnection con)
-        {
-
-
-            Console.WriteLine("// This file was automatically generated by the PetaPoco T4 Template");
-            Console.WriteLine("// Do not make changes directly to this file - edit the template instead");
-            Console.WriteLine("// ");
-            Console.WriteLine("// The following connection settings were used to generate this file");
-            Console.WriteLine("// ");
-            Console.WriteLine("//     Connection String Name: `{0}`", ConnectionStringName);
-            Console.WriteLine("//     Provider:               `{0}`", fac);
-            Console.WriteLine("//     Connection String:      `{0}`", fac);
-            Console.WriteLine("//     Schema:                 `{0}`", SchemaName);
-            Console.WriteLine("//     Include Views:          `{0}`", IncludeViews);
-            Console.WriteLine("");
-
-            DbProviderFactory _factory;
-            try
-            {
-                _factory = fac;
-            }
-            catch (Exception x)
-            {
-                var error = x.Message.Replace("\r\n", "\n").Replace("\n", " ");
-                Console.WriteLine(string.Format("Failed to load provider `{0}` - {1}", fac, error));
-                Console.WriteLine("");
-                Console.WriteLine("// -----------------------------------------------------------------------------------------");
-                Console.WriteLine("// Failed to load provider `{0}` - {1}", fac, error);
-                Console.WriteLine("// -----------------------------------------------------------------------------------------");
-                Console.WriteLine("");
-                return new List<SP>();
-            }
-            Console.WriteLine("//     Factory Name:          `{0}`", _factory.GetType().Name);
-
-            try
-            {
-                List<SP> result;
-                using (var conn = con)
-                {
-                    
-                    SchemaReader reader = null;
-
-                    if (_factory.GetType().Name == "MySqlClientFactory")
-                    {
-                        // MySql
-                        reader = new MySqlSchemaReader();
-                        return SPsNotSupported("MySqlClientFactory");
-                    }
-
-                    else if (_factory.GetType().Name == "NpgsqlFactory")
-                    {
-                        // PostgreSQL
-                        reader = new PostGreSqlSchemaReader();
-                        return SPsNotSupported("NpgsqlFactory");
-                    }
-                    else if (_factory.GetType().Name == "OracleClientFactory")
-                    {
-                        // Oracle
-                        reader = new OracleSchemaReader();
-                        return SPsNotSupported("OracleClientFactory");
-                    }
-                    else if (_factory.GetType().Name == "SQLiteFactory")
-                    {
-                        // Sqlite
-                        reader = new SqliteSchemaReader();
-                        return SPsNotSupported("SQLiteFactory");
-                    }
-                    else
-                    {
-                        // Assume SQL Server
-                        reader = new SqlServerSchemaReader(IncludeSPReturnTypes);
-                    }
-
-                    reader.outer = this;
-                    result = reader.ReadSPList(conn, _factory);
-                    // Remove unrequired procedures
-                    for (int i = result.Count - 1; i >= 0; i--)
-                    {
-                        if (SchemaName != null && string.Compare(result[i].Schema, SchemaName, true) != 0)
-                        {
-                            result.RemoveAt(i);
-                            continue;
-                        }
-                    }
-                }
-                return result;
-            }
-            catch (Exception x)
-            {
-                var error = x.Message.Replace("\r\n", "\n").Replace("\n", " ");
-                Console.WriteLine(string.Format("Failed to read database schema - {0}", error));
-                Console.WriteLine("");
-                Console.WriteLine("// -----------------------------------------------------------------------------------------");
-                Console.WriteLine("// Failed to read database schema - {0}", error);
-                Console.WriteLine("// -----------------------------------------------------------------------------------------");
-                Console.WriteLine("");
-                return new List<SP>();
-            }
-
-
-        }
-
-
     }
 }
