@@ -1397,7 +1397,6 @@ and ucc.position = 1";
                     case "image":
                     case "binary":
                     case "blob":
-                    case "clob":
                     case "varbinary":
                     case "timestamp":
                         sysType = "byte[]";
