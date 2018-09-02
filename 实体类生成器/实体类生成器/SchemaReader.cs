@@ -655,9 +655,27 @@ namespace 实体类生成器
             /// <returns></returns>
             public static string MakeInitialCaps(string word)
             {
-                return string.Concat(word.Substring(0, 1).ToUpper(), word.Substring(1).ToLower());
+                return FixInvalidChars(String.Concat(word.Substring(0, 1).ToUpper(), word.Substring(1).ToLower()));
             }
+            public static string FixInvalidChars(string word)
+            {
+                var val = word;
+                val = val.Replace("-", "_Dash")
+                         .Replace(' ', '_')
+                         .Replace("#", "_Hash")
+                         .Replace("$", "_Dollar")
+                         .Replace("+", "_Plus")
+                         .Replace("%", "_Percent")
+                         .Replace(">", "_GreaterThan")
+                         .Replace("<", "_LessThan")
+                         .Replace("&", "_And")
+                         .Replace(",", "_Comma")
+                         .Replace("'", "_Apst")
+                         .Replace("/", "_Per");
+                if (char.IsDigit(val[0])) { val = "_" + val; };
 
+                return val;
+            }
             /// <summary>
             ///     Makes the initial lower case.
             /// </summary>
@@ -665,7 +683,9 @@ namespace 实体类生成器
             /// <returns></returns>
             public static string MakeInitialLowerCase(string word)
             {
-                return string.Concat(word.Substring(0, 1).ToLower(), word.Substring(1));
+                var val = String.Concat(word.Substring(0, 1).ToLower(), word.Substring(1));
+                val = FixInvalidChars(val);
+                return val;
             }
 
 
@@ -2051,8 +2071,11 @@ WHERE   o.type = 'P'
                     case "datetime":
                     case "datetime2":
                     case "date":
+                        sysType   = "DateTime";
+                        sysDbType = "DbType.DateTime";
+                        break;
                     case "time":
-                        sysType = "DateTime";
+                        sysType   = "TimeSpan";
                         sysDbType = "DbType.DateTime";
                         break;
                     case "datetimeoffset":
@@ -2124,8 +2147,10 @@ WHERE   o.type = 'P'
                     case "datetime":
                     case "datetime2":
                     case "date":
-                    case "time":
                         sysType = "DateTime";
+                        break;
+                    case "time":
+                        sysType = "TimeSpan";
                         break;
                     case "datetimeoffset":
                         sysType = "DateTimeOffset";
